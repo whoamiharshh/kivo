@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 // Imported for its side effect: validating the configuration before anything
 // renders, so a missing key is one clear error at startup rather than a
@@ -8,9 +8,19 @@ import "@/lib/env";
 import { Providers } from "./providers";
 import { Toaster } from "@/components/ui/sonner";
 
-const geistSans = Geist({
+/**
+ * Inter, self-hosted by next/font so there is no request to Google at runtime
+ * and no layout shift while it loads.
+ *
+ * `display: "swap"` shows the fallback immediately rather than blocking paint
+ * on the font — the first thing a person sees is their money, not a blank
+ * screen. Only the four weights the type scale actually uses are fetched.
+ */
+const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -31,7 +41,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} h-full antialiased`}>
+    <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <body className="min-h-full bg-background text-foreground">
         <Providers>{children}</Providers>
         {/* The app is light-only, so the toasts are too — not the phone's setting. */}
