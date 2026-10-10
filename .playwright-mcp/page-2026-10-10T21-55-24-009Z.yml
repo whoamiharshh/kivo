@@ -1,0 +1,7 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "Pot" [ref=e4] [cursor=pointer]:
+        - /url: /
+    - main [ref=e5]
+  - region "Notifications alt+T"

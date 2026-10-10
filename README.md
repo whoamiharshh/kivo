@@ -403,11 +403,48 @@ actually happened in `docs/feedback-log.md`.
 
 ## Deployed addresses
 
-| What | Address |
-|---|---|
-| TestRupee | _not deployed yet_ |
-| PotManager | _not deployed yet_ |
-| Deployed at block | _n/a_ |
+Monad Testnet (chain id 10143), deployed at block **69937293**. Every contract
+is source-verified on Sourcify — each one returned `exact_match`, checked
+against the API rather than trusted from the CLI's exit code.
+
+| Contract | Address | Explorer |
+|---|---|---|
+| TestRupee | `0xCc29aA71B0f98c90AF219c2CdC9cBAd68B86BdaA` | [view](https://testnet.monadexplorer.com/address/0xCc29aA71B0f98c90AF219c2CdC9cBAd68B86BdaA) |
+| PotManager | `0x2818b52178840Ef546fc728c12daec39Be235968` | [view](https://testnet.monadexplorer.com/address/0x2818b52178840Ef546fc728c12daec39Be235968) |
+| SocialPay | `0x4f407850A04286c6D2362C311E70586cc73e1133` | [view](https://testnet.monadexplorer.com/address/0x4f407850A04286c6D2362C311E70586cc73e1133) |
+| Gift | `0xeB89662b92C881ADeF9F5c410f357Fc1dc3b0d5d` | [view](https://testnet.monadexplorer.com/address/0xeB89662b92C881ADeF9F5c410f357Fc1dc3b0d5d) |
+| BehaviourSavings | `0x008A65Aa1dE78Fe2551427f17e63D2881AF29930` | [view](https://testnet.monadexplorer.com/address/0x008A65Aa1dE78Fe2551427f17e63D2881AF29930) |
+| AccountabilityPool | `0x14cD8532b4aA4eF5E583CEb82db7Ec29e5517994` | [view](https://testnet.monadexplorer.com/address/0x14cD8532b4aA4eF5E583CEb82db7Ec29e5517994) |
+| SalaryStream | `0x208fdB568CF949Fb7Fdc02d74Ed9811249e73974` | [view](https://testnet.monadexplorer.com/address/0x208fdB568CF949Fb7Fdc02d74Ed9811249e73974) |
+| IncomeShare | `0x80340B46Ab439C722E0C990F532f94C90A7cF2eF` | [view](https://testnet.monadexplorer.com/address/0x80340B46Ab439C722E0C990F532f94C90A7cF2eF) |
+| MicroCover | `0x380491FfD851602100aDBBf855ff403623db5816` | [view](https://testnet.monadexplorer.com/address/0x380491FfD851602100aDBBf855ff403623db5816) |
+
+### Who holds which role, and why it matters
+
+Four of these contracts bake an address into an `immutable` at deployment. The
+split below keeps the server's signing key able to *authorise* things while
+owning nothing and holding no money — which is the claim `docs/trust-layer.md`
+makes, so it has to be true on chain and not just in prose.
+
+| Role | Held by | Why |
+|---|---|---|
+| `TRUST_SIGNER` (PotManager) | `0xbe4A…1D94` | admits a joiner once the server has checked their invite code |
+| `POOL_ATTESTER` (AccountabilityPool) | `0xbe4A…1D94` | signs a day as kept |
+| `RECORDER` (IncomeShare) | `0xbe4A…1D94` | the server itself sends `recordRepayment` |
+| `INSURER_SIGNER` (MicroCover) | `0xbe4A…1D94` | signs a claim settlement |
+| `ARBITRATOR` (SocialPay) | deployer | a human resolves disputes |
+| `SAVINGS_ADMIN` (BehaviourSavings) | deployer | a human approves behaviour verifiers |
+| `INSURER` (MicroCover) | deployer | holds the tINR reserve; a human binds policies |
+
+The deploy script printed a loud warning for the three deployer-held roles,
+which is correct: on a testnet they are placeholders for parties that do not
+exist, and on any other chain the script refuses to run unless each one is
+named explicitly and none of them is the deployer.
+
+**BehaviourSavings has no approved verifier yet.** `SaveConsistently` goals
+work immediately; `ExternalSignal` goals cannot be created until the savings
+admin calls `registerVerifier` then `setBehaviourVerifier`, pointing at
+`0xbe4A…1D94`.
 
 ## Honesty
 
