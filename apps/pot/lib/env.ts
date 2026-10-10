@@ -69,12 +69,36 @@ const building =
   process.env.NEXT_PHASE === "phase-production-build" ||
   process.env.NEXT_PHASE === "phase-export";
 
-function explain(error: z.ZodError): never {
+/**
+ * In development the result is reported, not thrown.
+ *
+ * A hard failure is right in production — a live server with no signing key
+ * must refuse to serve rather than half-work. But the same throw on a laptop
+ * makes the app undevelopable: `next dev` dies before serving a single route,
+ * so nobody can look at a screen until every third-party account has been
+ * created. The screens are the thing being built; they have to be reachable
+ * before the integrations exist.
+ *
+ * So development prints the same message as a warning and carries on, and the
+ * per-feature readiness flags do what they were always there for: each screen
+ * says "not set up yet" for the piece it is missing. Production behaviour is
+ * unchanged, and `lib/server/env.ts` still throws at the point any secret is
+ * actually used, in every environment.
+ */
+const lenient = process.env.NODE_ENV === "development";
+
+function explain(error: z.ZodError): void {
   // One message listing everything that is wrong, rather than one per restart.
   const lines = error.issues.map((i) => `  - ${i.message}`).join("\n");
-  throw new Error(
-    `Pot cannot start: the configuration is incomplete.\n\n${lines}\n\nCopy apps/pot/.env.example to apps/pot/.env.local and fill in the blanks.`
-  );
+  const message = `Pot cannot start: the configuration is incomplete.\n\n${lines}\n\nCopy apps/pot/.env.example to apps/pot/.env.local and fill in the blanks.`;
+
+  if (lenient) {
+    console.warn(
+      `[env] ${message}\n\nContinuing because NODE_ENV=development. Features needing these values show a setup notice instead.`
+    );
+    return;
+  }
+  throw new Error(message);
 }
 
 const publicParsed = publicSchema.safeParse({

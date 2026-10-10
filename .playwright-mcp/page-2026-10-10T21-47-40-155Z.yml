@@ -1,0 +1,68 @@
+- generic [active] [ref=f3e1]:
+  - generic [ref=f3e2]:
+    - paragraph [ref=f3e4]: Preview — sample data, nothing is connected
+    - main [ref=f3e5]:
+      - generic [ref=f3e6]:
+        - heading "Payments" [level=1] [ref=f3e7]
+        - paragraph [ref=f3e8]: Money you send waits until the other person says they got it.
+      - generic [ref=f3e9]:
+        - generic [ref=f3e10]:
+          - heading "Needs you" [level=2] [ref=f3e11]
+          - generic [ref=f3e12]:
+            - link "From Priya Auto to the station Waiting on you ₹450" [ref=f3e13] [cursor=pointer]:
+              - /url: /preview/pay/6
+              - generic [aria-hidden] [ref=f3e14]: P
+              - generic [ref=f3e15]:
+                - paragraph [ref=f3e16]: From Priya
+                - paragraph [ref=f3e17]: Auto to the station
+                - generic [ref=f3e18]: Waiting on you
+              - generic [ref=f3e20]: ₹450
+            - link "To Aman They never accepted it Take it back ₹1,200" [ref=f3e21] [cursor=pointer]:
+              - /url: /preview/pay/5
+              - generic [aria-hidden] [ref=f3e22]: A
+              - generic [ref=f3e23]:
+                - paragraph [ref=f3e24]: To Aman
+                - paragraph [ref=f3e25]: They never accepted it
+                - generic [ref=f3e26]: Take it back
+              - generic [ref=f3e28]: ₹1,200
+        - generic [ref=f3e29]:
+          - heading "Everything else" [level=2] [ref=f3e30]
+          - generic [ref=f3e31]:
+            - link "To Rahul Cab to the airport Waiting on them ₹800" [ref=f3e32] [cursor=pointer]:
+              - /url: /preview/pay/4
+              - generic [aria-hidden] [ref=f3e33]: R
+              - generic [ref=f3e34]:
+                - paragraph [ref=f3e35]: To Rahul
+                - paragraph [ref=f3e36]: Cab to the airport
+                - generic [ref=f3e37]: Waiting on them
+              - generic [ref=f3e39]: ₹800
+            - link "From Sneha Hostel groceries, my half Received ₹2,500" [ref=f3e40] [cursor=pointer]:
+              - /url: /preview/pay/3
+              - generic [aria-hidden] [ref=f3e41]: S
+              - generic [ref=f3e42]:
+                - paragraph [ref=f3e43]: From Sneha
+                - paragraph [ref=f3e44]: Hostel groceries, my half
+                - generic [ref=f3e45]: Received
+              - generic [ref=f3e47]: ₹2,500
+            - link "To Vikram Came back to you Returned to you ₹600" [ref=f3e48] [cursor=pointer]:
+              - /url: /preview/pay/2
+              - generic [aria-hidden] [ref=f3e49]: V
+              - generic [ref=f3e50]:
+                - paragraph [ref=f3e51]: To Vikram
+                - paragraph [ref=f3e52]: Came back to you
+                - generic [ref=f3e53]: Returned to you
+              - generic [ref=f3e55]: ₹600
+            - link "To Kabir Frozen until you agree On hold ₹1,500" [ref=f3e56] [cursor=pointer]:
+              - /url: /preview/pay/1
+              - generic [aria-hidden] [ref=f3e57]: K
+              - generic [ref=f3e58]:
+                - paragraph [ref=f3e59]: To Kabir
+                - paragraph [ref=f3e60]: Frozen until you agree
+                - generic [ref=f3e61]: On hold
+              - generic [ref=f3e63]: ₹1,500
+        - paragraph [ref=f3e64]: Test money. No real value.
+      - button "Send money" [ref=f3e67]
+    - contentinfo [ref=f3e68]:
+      - link "All screens" [ref=f3e69] [cursor=pointer]:
+        - /url: /preview
+  - region "Notifications alt+T"
