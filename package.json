@@ -1,0 +1,14 @@
+{
+  "name": "pot-monorepo",
+  "private": true,
+  "packageManager": "pnpm@12.10.1",
+  "scripts": {
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test:contracts": "pnpm --filter contracts test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

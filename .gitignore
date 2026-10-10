@@ -1,0 +1,44 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+next-env.d.ts
+*.tsbuildinfo
+
+# secrets — never commit these
+.env
+.env.local
+.env.*.local
+
+# foundry build output (reproducible: forge build)
+packages/contracts/out/
+packages/contracts/cache/
+packages/contracts/broadcast/
+
+# foundry dependencies (reproducible: forge install)
+packages/contracts/lib/
+
+# expo / react native (apps/trust, not built yet)
+.expo/
+dist/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+
+# local safety archive of the pre-monorepo app/ and contracts/ dirs — not history
+pre-monorepo-snapshot.zip
+
+# local quarantine + archives: NOT history, NOT source
+# .dist/quarantine holds packages/contracts-copytest (drifted v1 contracts,
+# M-3 in docs/security-audit.md) and packages/_probe, moved out of the
+# pnpm workspace so no build or deploy can pick them up by accident.
+.dist/
+
+# a stray download of the original brief, not source
+"files (2).zip"

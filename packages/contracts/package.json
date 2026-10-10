@@ -1,0 +1,13 @@
+{
+  "name": "contracts",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Solidity for Pot (group money box) and SocialPay (held-until-confirmed payments). Foundry, not node.",
+  "scripts": {
+    "build": "forge build",
+    "test": "forge test",
+    "coverage": "forge coverage --no-match-coverage script",
+    "lint": "forge fmt --check",
+    "typecheck": "forge build --sizes"
+  }
+}
