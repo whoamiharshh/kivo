@@ -12,23 +12,20 @@
  * ──────────────── writes, and why they exist at all ────────────────
  *
  * Most of this project avoids the server sending transactions. The user's own
- * wallet signs and submits, so a compromised server cannot move money. Two
- * contracts make that impossible:
+ * wallet signs and submits. The one server-side write implemented here is:
  *
  *   IncomeShare.recordRepayment  requires msg.sender == recorder
- *   MicroCover.activatePolicy    requires msg.sender == insurer
  *
- * Those roles exist because on a real product they belong to a licensed
- * counterparty and a licensed insurer, who would run their own infrastructure
- * and send their own transactions. On a testnet there is no such party, so the
- * demo gives both roles to this server and says so loudly — in the deploy
- * script's warnings, in the UI's "Prototype" labels, and here.
+ * `MicroCover.activatePolicy` also requires a server-side insurer, but this
+ * module does not implement that write. The deployed testnet's insurer and
+ * insurer signer are separate addresses; do not infer that policy activation
+ * works from the signing support below.
  *
- * What that costs, stated plainly: a compromised server key could record a
- * repayment against an agreement, or bind an insurance policy. It still could
- * NOT invent a repayment the recipient did not sign for (the contract checks
- * the recipient's signature separately), and it could not take money out of
- * MicroCover's reserve beyond paying a claim the policy already covers.
+ * What the implemented recorder permission costs, stated plainly: a
+ * compromised server key could record a repayment only when the recipient has
+ * signed that exact figure (the contract checks the recipient's signature).
+ * The key also signs attestations in `trust-signer.ts`; those signatures are
+ * trusted by the contracts that name its address.
  *
  * The server pays its own gas for these. On Monad Testnet that comes from the
  * faucet; see README. If the key runs dry these two actions fail with a clear
@@ -44,7 +41,8 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { monadTestnet } from "viem/chains";
-import { TRUST_SIGNER_KEY } from "./env";
+import { TRUST_SIGNER_KEY, TrustSignerUnavailableError } from "./env";
+import { logServerError } from "./logging";
 import { giftAbi, incomeShareAbi, microCoverAbi } from "../abis";
 import { GIFT_ADDRESS, INCOME_SHARE_ADDRESS, MICRO_COVER_ADDRESS } from "../contracts";
 
@@ -55,7 +53,7 @@ let publicClient: ReturnType<typeof createPublicClient> | null = null;
 export function reader() {
   publicClient ??= createPublicClient({
     chain: monadTestnet,
-    transport: http(),
+    transport: http(process.env.NEXT_PUBLIC_RPC_URL || undefined),
   });
   return publicClient;
 }
@@ -103,7 +101,7 @@ export async function giftConditionHash(giftId: number): Promise<Hex> {
     return g.conditionHash;
   } catch (err) {
     if (err instanceof ChainError) throw err;
-    console.error("[chain] gift read failed", err);
+    logServerError("chain gift read failed", err);
     throw new ChainError(
       "We couldn't check that gift. Please try again.",
       502,
@@ -147,7 +145,7 @@ export async function claimFacts(
     };
   } catch (err) {
     if (err instanceof ChainError) throw err;
-    console.error("[chain] claim read failed", err);
+    logServerError("chain claim read failed", err);
     throw new ChainError(
       "We couldn't check that policy. Please try again.",
       502,
@@ -184,7 +182,8 @@ export async function submitRepayment(args: {
       account: privateKeyToAccount(TRUST_SIGNER_KEY()),
     });
   } catch (err) {
-    console.error("[chain] recordRepayment failed", err);
+    if (err instanceof TrustSignerUnavailableError) throw err;
+    logServerError("chain recordRepayment failed", err);
     throw new ChainError(
       "The repayment could not be recorded. It has not been saved — please try again.",
       502,

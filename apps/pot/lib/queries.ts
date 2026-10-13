@@ -2,9 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
-import { parseAbiItem, type PublicClient } from "viem";
+import { type PublicClient } from "viem";
 import {
-  DEPLOY_BLOCK,
   POT_MANAGER_ADDRESS,
   TEST_RUPEE_ADDRESS,
   contractsConfigured,
@@ -13,6 +12,9 @@ import {
 } from "./contracts";
 import { loadDisplayNames, loadMemos, loadPotMeta, loadPotMetas } from "./store";
 import { useAppWallet } from "./tx";
+import { deriveStateFeed, spendIdAt } from "./activity";
+
+export type { FeedItem } from "./activity";
 
 /** Mirrors PotManager.PotState. */
 export const PotState = {
@@ -41,43 +43,6 @@ export type Pot = {
   state: PotStateValue;
 };
 
-/**
- * The events the feed is built from, written out so their argument types flow
- * through getLogs. These match PotManager.sol exactly.
- */
-const EVENTS = {
-  MemberJoined: parseAbiItem(
-    "event MemberJoined(uint256 indexed potId, address indexed member)"
-  ),
-  Deposited: parseAbiItem(
-    "event Deposited(uint256 indexed potId, address indexed member, uint256 amount)"
-  ),
-  PotFunded: parseAbiItem(
-    "event PotFunded(uint256 indexed potId, uint256 totalContributed)"
-  ),
-  RefundingStarted: parseAbiItem(
-    "event RefundingStarted(uint256 indexed potId, uint256 refundableTotal)"
-  ),
-  SpendRequested: parseAbiItem(
-    "event SpendRequested(uint256 indexed potId, uint256 indexed spendId, address indexed requester, address to, uint256 amount, bytes32 memoHash, bool needsApproval)"
-  ),
-  SpendApproved: parseAbiItem(
-    "event SpendApproved(uint256 indexed potId, uint256 indexed spendId, address indexed approver)"
-  ),
-  SpendCancelled: parseAbiItem(
-    "event SpendCancelled(uint256 indexed potId, uint256 indexed spendId, address indexed by)"
-  ),
-  SpendExecuted: parseAbiItem(
-    "event SpendExecuted(uint256 indexed potId, uint256 indexed spendId, address indexed to, uint256 amount)"
-  ),
-  PotClosed: parseAbiItem(
-    "event PotClosed(uint256 indexed potId, uint256 refundedTotal)"
-  ),
-  Refunded: parseAbiItem(
-    "event Refunded(uint256 indexed potId, address indexed member, uint256 amount)"
-  ),
-} as const;
-
 /** How much test money the person has, and whether the pot can already move it. */
 export function useTestMoney() {
   const { address } = useAppWallet();
@@ -86,7 +51,7 @@ export function useTestMoney() {
   return useQuery({
     queryKey: ["test-money", address],
     enabled: Boolean(address && client && contractsConfigured),
-    refetchInterval: 8_000,
+    refetchInterval: 24_000,
     queryFn: async () => {
       const c = client as PublicClient;
       const [balance, allowance, lastClaim] = await c.multicall({
@@ -126,7 +91,14 @@ export function useTestMoney() {
   });
 }
 
-/** Every pot this person has joined, newest first, with its offchain name. */
+/**
+ * Newest pots checked per refresh. The scan is one membership read per pot, so
+ * the cost grows with the number of pots ever created. Fine for a demo, not
+ * for a busy deployment; see docs/pot-discovery.md for the scaling path.
+ */
+const MAX_POTS_SCANNED = 200;
+
+/** Every pot this account belongs to, newest first, read straight from the contract. */
 export function useMyPots() {
   const { address } = useAppWallet();
   const client = usePublicClient();
@@ -134,39 +106,58 @@ export function useMyPots() {
   return useQuery({
     queryKey: ["my-pots", address],
     enabled: Boolean(address && client && contractsConfigured),
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
     queryFn: async () => {
       const c = client as PublicClient;
-      const joined = await c.getLogs({
-        address: POT_MANAGER_ADDRESS,
-        event: EVENTS.MemberJoined,
-        args: { member: address! },
-        fromBlock: DEPLOY_BLOCK,
-        toBlock: "latest",
-      });
-
-      const ids = [
-        ...new Set(
-          joined.map((l) => Number((l.args as { potId: bigint }).potId))
-        ),
-      ].sort((a, b) => b - a);
-      if (ids.length === 0) return [];
-
-      const pots = (await c.multicall({
-        allowFailure: false,
-        contracts: ids.map((id) => ({
+      const count = Number(
+        (await c.readContract({
           address: POT_MANAGER_ADDRESS,
           abi: potManagerAbi,
-          functionName: "getPot" as const,
-          args: [BigInt(id)],
-        })),
-      })) as unknown as Pot[];
+          functionName: "potCount",
+        })) as bigint
+      );
+
+      const candidates: number[] = [];
+      for (let id = count; id >= Math.max(1, count - MAX_POTS_SCANNED + 1); id--) {
+        candidates.push(id);
+      }
+
+      const ids: number[] = [];
+      for (let offset = 0; offset < candidates.length; offset += 100) {
+        const batch = candidates.slice(offset, offset + 100);
+        const membership = (await c.multicall({
+          allowFailure: false,
+          contracts: batch.map((id) => ({
+            address: POT_MANAGER_ADDRESS,
+            abi: potManagerAbi,
+            functionName: "isMember" as const,
+            args: [BigInt(id), address as `0x${string}`],
+          })),
+        })) as boolean[];
+        batch.forEach((id, i) => {
+          if (membership[i]) ids.push(id);
+        });
+      }
+
+      const potStates: Pot[] = [];
+      for (let offset = 0; offset < ids.length; offset += 50) {
+        const batch = ids.slice(offset, offset + 50);
+        const result = (await c.multicall({
+          allowFailure: false,
+          contracts: batch.map((id) => ({
+            address: POT_MANAGER_ADDRESS,
+            abi: potManagerAbi,
+            functionName: "getPot" as const,
+            args: [BigInt(id)],
+          })),
+        })) as unknown as Pot[];
+        potStates.push(...result);
+      }
 
       const metas = await loadPotMetas(ids);
-
       return ids.map((id, i) => ({
         potId: id,
-        pot: pots[i],
+        pot: potStates[i],
         name: metas[id]?.name ?? `Pot #${id}`,
         perPersonPaise: BigInt(metas[id]?.perPersonPaise ?? "0"),
       }));
@@ -182,7 +173,7 @@ export function usePot(potId: number | undefined) {
   return useQuery({
     queryKey: ["pot", potId, address],
     enabled: Boolean(potId && client && contractsConfigured),
-    refetchInterval: 6_000,
+    refetchInterval: 20_000,
     queryFn: async () => {
       const c = client as PublicClient;
       const id = BigInt(potId!);
@@ -210,11 +201,11 @@ export function usePot(potId: number | undefined) {
           ? []
           : ((await c.multicall({
               allowFailure: false,
-              contracts: members.map((m) => ({
+              contracts: members.map((member) => ({
                 address: POT_MANAGER_ADDRESS,
                 abi: potManagerAbi,
                 functionName: "contributed" as const,
-                args: [id, m],
+                args: [id, member],
               })),
             })) as unknown as bigint[]);
 
@@ -228,7 +219,6 @@ export function usePot(potId: number | undefined) {
         })) as bigint;
       }
 
-      // How much this person can still repay without anyone else approving.
       let myInstantRemaining = 0n;
       if (address && pot.state === PotState.Funded) {
         myInstantRemaining = (await c.readContract({
@@ -243,7 +233,6 @@ export function usePot(potId: number | undefined) {
         loadDisplayNames(members),
         loadPotMeta(potId!),
       ]);
-
       const remainingToTarget =
         pot.totalContributed >= pot.targetAmount
           ? 0n
@@ -258,242 +247,134 @@ export function usePot(potId: number | undefined) {
         remainingToTarget,
         myRefund,
         myInstantRemaining,
-        /** Money not already held by a pending repayment. */
         available: pot.balance - pot.reserved,
-        members: members.map((address, i) => ({
-          address,
+        members: members.map((member, i) => ({
+          address: member,
           contributed: contributions[i] ?? 0n,
-          name: names[address.toLowerCase()] ?? null,
+          name: names[member.toLowerCase()] ?? null,
         })),
       };
     },
   });
 }
 
-export type FeedKind =
-  | "joined"
-  | "added"
-  | "funded"
-  | "refunding"
-  | "requested"
-  | "approved"
-  | "cancelled"
-  | "paid"
-  | "closed"
-  | "refunded";
-
-export type FeedItem = {
-  key: string;
-  kind: FeedKind;
-  blockNumber: bigint;
-  logIndex: number;
-  actor?: `0x${string}`;
-  to?: `0x${string}`;
-  amount?: bigint;
-  spendId?: number;
-  memo?: string | null;
-  needsApproval?: boolean;
+/** Mirrors PotManager.Spend, as `getSpend` returns it. */
+export type Spend = {
+  requester: `0x${string}`;
+  to: `0x${string}`;
+  amount: bigint;
+  memoHash: `0x${string}`;
+  executed: boolean;
+  cancelled: boolean;
 };
 
-/** The activity feed, plus anything still waiting on an approval. Built from events. */
+/**
+ * The pot's history, rebuilt from the contract's own views (see
+ * `deriveStateFeed` for exactly what that does and does not include), plus the
+ * repayments that are still waiting on someone.
+ */
 export function usePotActivity(potId: number | undefined) {
+  const { address } = useAppWallet();
   const client = usePublicClient();
+  const enabled = Boolean(potId !== undefined && address && client && contractsConfigured);
 
   return useQuery({
-    queryKey: ["pot-activity", potId],
-    enabled: Boolean(potId && client && contractsConfigured),
-    refetchInterval: 6_000,
+    queryKey: ["pot-activity", potId, address],
+    enabled,
+    refetchInterval: 20_000,
     queryFn: async () => {
       const c = client as PublicClient;
       const id = BigInt(potId!);
-      const address = POT_MANAGER_ADDRESS;
-      const fromBlock = DEPLOY_BLOCK;
-      const toBlock = "latest" as const;
-      const args = { potId: id };
 
-      const [
-        joined,
-        added,
-        funded,
-        refunding,
-        requested,
-        approved,
-        cancelled,
-        paid,
-        closed,
-        refunded,
-      ] = await Promise.all([
-        c.getLogs({ address, fromBlock, toBlock, args, event: EVENTS.MemberJoined }),
-        c.getLogs({ address, fromBlock, toBlock, args, event: EVENTS.Deposited }),
-        c.getLogs({ address, fromBlock, toBlock, args, event: EVENTS.PotFunded }),
-        c.getLogs({ address, fromBlock, toBlock, args, event: EVENTS.RefundingStarted }),
-        c.getLogs({ address, fromBlock, toBlock, args, event: EVENTS.SpendRequested }),
-        c.getLogs({ address, fromBlock, toBlock, args, event: EVENTS.SpendApproved }),
-        c.getLogs({ address, fromBlock, toBlock, args, event: EVENTS.SpendCancelled }),
-        c.getLogs({ address, fromBlock, toBlock, args, event: EVENTS.SpendExecuted }),
-        c.getLogs({ address, fromBlock, toBlock, args, event: EVENTS.PotClosed }),
-        c.getLogs({ address, fromBlock, toBlock, args, event: EVENTS.Refunded }),
+      const [pot, members] = (await c.multicall({
+        allowFailure: false,
+        contracts: [
+          { address: POT_MANAGER_ADDRESS, abi: potManagerAbi, functionName: "getPot", args: [id] },
+          { address: POT_MANAGER_ADDRESS, abi: potManagerAbi, functionName: "getMembers", args: [id] },
+        ],
+      })) as unknown as [Pot, `0x${string}`[]];
+
+      // Repayments are numbered from 1, so walk 1..spendCount, not 0..spendCount-1.
+      const spendIds = Array.from({ length: pot.spendCount }, (_, i) => spendIdAt(i));
+      const [contributed, refundClaimed, spends] = await Promise.all([
+        members.length
+          ? (c.multicall({
+              allowFailure: false,
+              contracts: members.map((member) => ({
+                address: POT_MANAGER_ADDRESS,
+                abi: potManagerAbi,
+                functionName: "contributed" as const,
+                args: [id, member],
+              })),
+            }) as unknown as Promise<bigint[]>)
+          : Promise.resolve([] as bigint[]),
+        members.length
+          ? (c.multicall({
+              allowFailure: false,
+              contracts: members.map((member) => ({
+                address: POT_MANAGER_ADDRESS,
+                abi: potManagerAbi,
+                functionName: "refundClaimed" as const,
+                args: [id, member],
+              })),
+            }) as unknown as Promise<boolean[]>)
+          : Promise.resolve([] as boolean[]),
+        spendIds.length
+          ? (c.multicall({
+              allowFailure: false,
+              contracts: spendIds.map((spendId) => ({
+                address: POT_MANAGER_ADDRESS,
+                abi: potManagerAbi,
+                functionName: "getSpend" as const,
+                args: [id, BigInt(spendId)],
+              })),
+            }) as unknown as Promise<Spend[]>)
+          : Promise.resolve([] as Spend[]),
       ]);
 
-      const memoHashes = requested.map(
-        (l) => (l.args as { memoHash: `0x${string}` }).memoHash
-      );
+      const feed = deriveStateFeed({
+        creator: pot.creator,
+        state: pot.state,
+        targetAmount: pot.targetAmount,
+        totalContributed: pot.totalContributed,
+        members: members.map((member, i) => ({
+          address: member,
+          contributed: contributed[i] ?? 0n,
+          refundClaimed: refundClaimed[i] ?? false,
+        })),
+        spends,
+      });
+
       const addresses = [
-        ...joined.map((l) => (l.args as { member: `0x${string}` }).member),
-        ...added.map((l) => (l.args as { member: `0x${string}` }).member),
-        ...requested.flatMap((l) => {
-          const a = l.args as { requester: `0x${string}`; to: `0x${string}` };
-          return [a.requester, a.to];
-        }),
-        ...approved.map((l) => (l.args as { approver: `0x${string}` }).approver),
-        ...refunded.map((l) => (l.args as { member: `0x${string}` }).member),
+        ...new Set([
+          ...members,
+          ...feed.flatMap((item) =>
+            [item.actor, item.to].filter((v): v is `0x${string}` => Boolean(v))
+          ),
+        ]),
       ];
       const [memos, names] = await Promise.all([
-        loadMemos(memoHashes),
+        loadMemos(spends.map((spend) => spend.memoHash)),
         loadDisplayNames(addresses),
       ]);
 
-      const at = (l: {
-        blockNumber: bigint | null;
-        logIndex: number | null;
-      }) => ({
-        blockNumber: l.blockNumber ?? 0n,
-        logIndex: l.logIndex ?? 0,
-      });
-
-      const items: FeedItem[] = [
-        ...joined.map((l) => {
-          const a = l.args as { member: `0x${string}` };
-          return {
-            key: `j-${l.transactionHash}-${l.logIndex}`,
-            kind: "joined" as const,
-            actor: a.member,
-            ...at(l),
-          };
-        }),
-        ...added.map((l) => {
-          const a = l.args as { member: `0x${string}`; amount: bigint };
-          return {
-            key: `d-${l.transactionHash}-${l.logIndex}`,
-            kind: "added" as const,
-            actor: a.member,
-            amount: a.amount,
-            ...at(l),
-          };
-        }),
-        ...funded.map((l) => {
-          const a = l.args as { totalContributed: bigint };
-          return {
-            key: `g-${l.transactionHash}-${l.logIndex}`,
-            kind: "funded" as const,
-            amount: a.totalContributed,
-            ...at(l),
-          };
-        }),
-        ...refunding.map((l) => {
-          const a = l.args as { refundableTotal: bigint };
-          return {
-            key: `n-${l.transactionHash}-${l.logIndex}`,
-            kind: "refunding" as const,
-            amount: a.refundableTotal,
-            ...at(l),
-          };
-        }),
-        ...requested.map((l) => {
-          const a = l.args as {
-            spendId: bigint;
-            requester: `0x${string}`;
-            to: `0x${string}`;
-            amount: bigint;
-            memoHash: `0x${string}`;
-            needsApproval: boolean;
-          };
-          return {
-            key: `r-${l.transactionHash}-${l.logIndex}`,
-            kind: "requested" as const,
-            actor: a.requester,
-            to: a.to,
-            amount: a.amount,
-            spendId: Number(a.spendId),
-            memo: memos[a.memoHash.toLowerCase()] ?? null,
-            needsApproval: a.needsApproval,
-            ...at(l),
-          };
-        }),
-        ...approved.map((l) => {
-          const a = l.args as { spendId: bigint; approver: `0x${string}` };
-          return {
-            key: `a-${l.transactionHash}-${l.logIndex}`,
-            kind: "approved" as const,
-            actor: a.approver,
-            spendId: Number(a.spendId),
-            ...at(l),
-          };
-        }),
-        ...cancelled.map((l) => {
-          const a = l.args as { spendId: bigint; by: `0x${string}` };
-          return {
-            key: `k-${l.transactionHash}-${l.logIndex}`,
-            kind: "cancelled" as const,
-            actor: a.by,
-            spendId: Number(a.spendId),
-            ...at(l),
-          };
-        }),
-        ...paid.map((l) => {
-          const a = l.args as {
-            spendId: bigint;
-            to: `0x${string}`;
-            amount: bigint;
-          };
-          return {
-            key: `x-${l.transactionHash}-${l.logIndex}`,
-            kind: "paid" as const,
-            to: a.to,
-            amount: a.amount,
-            spendId: Number(a.spendId),
-            ...at(l),
-          };
-        }),
-        ...closed.map((l) => {
-          const a = l.args as { refundedTotal: bigint };
-          return {
-            key: `c-${l.transactionHash}-${l.logIndex}`,
-            kind: "closed" as const,
-            amount: a.refundedTotal,
-            ...at(l),
-          };
-        }),
-        ...refunded.map((l) => {
-          const a = l.args as { member: `0x${string}`; amount: bigint };
-          return {
-            key: `f-${l.transactionHash}-${l.logIndex}`,
-            kind: "refunded" as const,
-            actor: a.member,
-            amount: a.amount,
-            ...at(l),
-          };
-        }),
-      ].sort((a, b) =>
-        a.blockNumber === b.blockNumber
-          ? b.logIndex - a.logIndex
-          : Number(b.blockNumber - a.blockNumber)
+      const items = feed.map((item) => ({
+        ...item,
+        memo: item.memoHash ? memos[item.memoHash.toLowerCase()] ?? null : null,
+      }));
+      const pending = spends.flatMap((spend, index) =>
+        !spend.executed && !spend.cancelled
+          ? [
+              {
+                spendId: spendIdAt(index),
+                requester: spend.requester,
+                to: spend.to,
+                amount: spend.amount,
+                memo: memos[spend.memoHash.toLowerCase()] ?? null,
+              },
+            ]
+          : []
       );
-
-      // Still waiting: requested, but neither paid out nor withdrawn.
-      const settledIds = new Set<number>([
-        ...paid.map((l) => Number((l.args as { spendId: bigint }).spendId)),
-        ...cancelled.map((l) => Number((l.args as { spendId: bigint }).spendId)),
-      ]);
-      const pending = items
-        .filter((i) => i.kind === "requested" && !settledIds.has(i.spendId!))
-        .map((i) => ({
-          spendId: i.spendId!,
-          requester: i.actor!,
-          to: i.to!,
-          amount: i.amount!,
-          memo: i.memo ?? null,
-        }));
 
       return { items, pending, names };
     },

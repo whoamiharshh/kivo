@@ -362,6 +362,126 @@ export type Database = {
         };
         Relationships: [];
       };
+      pot_activity_events: {
+        Row: {
+          args: Json;
+          block_hash: string;
+          block_number: number;
+          block_timestamp: string;
+          chain_id: number;
+          contract_address: string;
+          event_name: string;
+          indexed_at: string;
+          log_index: number;
+          pot_id: number;
+          transaction_hash: string;
+        };
+        Insert: {
+          args: Json;
+          block_hash: string;
+          block_number: number;
+          block_timestamp: string;
+          chain_id: number;
+          contract_address: string;
+          event_name: string;
+          indexed_at?: string;
+          log_index: number;
+          pot_id: number;
+          transaction_hash: string;
+        };
+        Update: {
+          args?: Json;
+          block_hash?: string;
+          block_number?: number;
+          block_timestamp?: string;
+          chain_id?: number;
+          contract_address?: string;
+          event_name?: string;
+          indexed_at?: string;
+          log_index?: number;
+          pot_id?: number;
+          transaction_hash?: string;
+        };
+        Relationships: [];
+      };
+      pot_activity_members: {
+        Row: {
+          chain_id: number;
+          contract_address: string;
+          indexed_at: string;
+          joined_block: number;
+          joined_log_index: number;
+          member_address: string;
+          pot_id: number;
+        };
+        Insert: {
+          chain_id: number;
+          contract_address: string;
+          indexed_at?: string;
+          joined_block: number;
+          joined_log_index: number;
+          member_address: string;
+          pot_id: number;
+        };
+        Update: {
+          chain_id?: number;
+          contract_address?: string;
+          indexed_at?: string;
+          joined_block?: number;
+          joined_log_index?: number;
+          member_address?: string;
+          pot_id?: number;
+        };
+        Relationships: [];
+      };
+      pot_activity_sync: {
+        Row: {
+          chain_id: number;
+          contract_address: string;
+          last_scanned_block: number | null;
+          last_scanned_hash: string | null;
+          next_block: number;
+          updated_at: string;
+        };
+        Insert: {
+          chain_id: number;
+          contract_address: string;
+          last_scanned_block?: number | null;
+          last_scanned_hash?: string | null;
+          next_block: number;
+          updated_at?: string;
+        };
+        Update: {
+          chain_id?: number;
+          contract_address?: string;
+          last_scanned_block?: number | null;
+          last_scanned_hash?: string | null;
+          next_block?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      pot_activity_leases: {
+        Row: {
+          chain_id: number;
+          contract_address: string;
+          expires_at: string;
+          lease_owner: string;
+        };
+        Insert: {
+          chain_id: number;
+          contract_address: string;
+          expires_at: string;
+          lease_owner: string;
+        };
+        Update: {
+          chain_id?: number;
+          contract_address?: string;
+          expires_at?: string;
+          lease_owner?: string;
+        };
+        Relationships: [];
+      };
       pots: {
         Row: {
           created_at: string;
@@ -475,7 +595,22 @@ export type Database = {
       };
     };
     Views: { [_ in never]: never };
-    Functions: { current_did: { Args: never; Returns: string } };
+    Functions: {
+      claim_pot_activity_lease: {
+        Args: {
+          p_chain_id: number;
+          p_contract_address: string;
+          p_lease_seconds: number;
+          p_owner: string;
+        };
+        Returns: boolean;
+      };
+      current_did: { Args: never; Returns: string };
+      release_pot_activity_lease: {
+        Args: { p_chain_id: number; p_contract_address: string; p_owner: string };
+        Returns: boolean;
+      };
+    };
     Enums: {
       behaviour_subject:
         | "commitment_goal"

@@ -28,6 +28,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { db } from "./db";
 import type { TrustAction } from "./trust-signer";
+import { logServerError } from "./logging";
 
 export type NonceRecord = {
   id: number;
@@ -80,7 +81,7 @@ export async function reserveNonce(args: {
     .single();
 
   if (error || !data) {
-    console.error("[nonce] could not reserve", error);
+    logServerError("nonce reservation failed", error);
     throw new NonceError(
       "Something went wrong. Please try again.",
       500,
@@ -107,7 +108,7 @@ export async function consumeNonce(nonce: string): Promise<void> {
     .select("id");
 
   if (error) {
-    console.error("[nonce] could not consume", error);
+    logServerError("nonce consumption failed", error);
     throw new NonceError(
       "Something went wrong. Please try again.",
       500,
@@ -147,7 +148,7 @@ export async function assertNotTooFrequent(args: {
   if (error) {
     // Fail CLOSED. A limiter that waves everything through when the database
     // hiccups is not a limiter.
-    console.error("[nonce] could not count", error);
+    logServerError("nonce rate check failed", error);
     throw new NonceError(
       "Something went wrong. Please try again.",
       500,

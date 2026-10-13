@@ -41,4 +41,12 @@ pre-monorepo-snapshot.zip
 .dist/
 
 # a stray download of the original brief, not source
-"files (2).zip"
+# (no quotes: .gitignore does not understand them, so the old line never matched)
+files (2).zip
+_spec/
+
+# local tool / agent state and browser-test captures — not source, and the
+# captures can contain page contents and URLs
+.playwright-mcp/
+.remember/
+.backup/

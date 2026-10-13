@@ -7,6 +7,19 @@
  * would degrade into is "trust whatever the frontend said".
  */
 import "server-only";
+import { privateKeyToAccount } from "viem/accounts";
+
+const COMPROMISED_TRUST_SIGNER_ADDRESS =
+  "0xbe4ad8cc900e5824440526e7669a82881c661d94";
+
+export class TrustSignerUnavailableError extends Error {
+  readonly reason = "signer_unavailable";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "TrustSignerUnavailableError";
+  }
+}
 
 function required(name: string): string {
   const value = process.env[name];
@@ -45,18 +58,26 @@ export const SUPABASE_URL = () => required("NEXT_PUBLIC_SUPABASE_URL");
  */
 export const SUPABASE_SECRET_KEY = () => required("SUPABASE_SECRET_KEY");
 
+/** Secret used only by the scheduled server-side Pot history indexer. */
+export const POT_INDEXER_SECRET = () => required("POT_INDEXER_SECRET");
+
 /**
  * The private key the server signs authorizations with, as 0x + 64 hex.
  *
- * This is the `trustSigner` passed to PotManager at deploy time. What it can
- * do: admit a joiner to a pot whose invite code the server has checked. What it
- * cannot do: spend, approve, close or refund anything. Still a secret worth
- * keeping - a leak lets somebody add themselves to any open pot.
+ * This key signs authorizations and attestations trusted by deployed
+ * contracts. On the current testnet deployment it is PotManager's join
+ * signer, AccountabilityPool's attester, IncomeShare's recorder, and
+ * MicroCover's insurer signer. The server also submits IncomeShare repayment
+ * records with it. It is not a generic contract admin, but its signatures can
+ * affect contract outcomes; a leaked key must be treated as compromised.
+ * These contract roles are immutable, so changing this environment value alone
+ * does not revoke the old key and can make existing actions fail.
  *
  * Generate one with:  openssl rand -hex 32
  * and prefix it with 0x. Never reuse a key that holds funds.
  */
 export const TRUST_SIGNER_KEY = () => {
+  assertTrustSignerEnabled();
   const key = required('TRUST_SIGNER_KEY');
   if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
     throw new Error(
@@ -64,8 +85,23 @@ export const TRUST_SIGNER_KEY = () => {
         'Generate one with: openssl rand -hex 32'
     );
   }
+    assertTrustSignerEnabled(privateKeyToAccount(key as `0x${string}`).address);
   return key as `0x${string}`;
 };
+
+  export function assertTrustSignerEnabled(address?: string): void {
+    if (process.env.TRUST_SIGNER_ENABLED !== "true") {
+      throw new TrustSignerUnavailableError(
+        "Server signing is disabled. Enable it only after an approved replacement signer is deployed and verified."
+      );
+    }
+
+    if (address?.toLowerCase() === COMPROMISED_TRUST_SIGNER_ADDRESS) {
+      throw new TrustSignerUnavailableError(
+        "The configured signer is the compromised legacy signer; refusing to sign or write."
+      );
+    }
+  }
 
 /**
  * The address allowed to resolve disputes, matching SocialPay's arbitrator.

@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    ".next-validation/**",
+    // Scratch files written by the session-history tool, not app source.
+    ".remember/**",
   ]),
 ]);
 

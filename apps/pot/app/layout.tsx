@@ -1,11 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Bricolage_Grotesque, Inter } from "next/font/google";
 import "./globals.css";
 // Imported for its side effect: validating the configuration before anything
 // renders, so a missing key is one clear error at startup rather than a
 // confusing failure three screens in. See lib/env.ts.
 import "@/lib/env";
-import { Providers } from "./providers";
 import { Toaster } from "@/components/ui/sonner";
 
 /**
@@ -21,6 +20,22 @@ const inter = Inter({
   subsets: ["latin"],
   display: "swap",
   weight: ["400", "500", "600", "700"],
+});
+
+/**
+ * Bricolage Grotesque for headings and amounts only.
+ *
+ * Inter stays for everything people read at length: it is plain and
+ * legible at 15px. Money and titles are what people look at first, so they get
+ * a face with a little character — tighter, slightly quirky letterforms that
+ * feel friendly rather than corporate. Self-hosted the same way, same
+ * `swap` behaviour, and only the three weights the type scale uses.
+ */
+const display = Bricolage_Grotesque({
+  variable: "--font-display",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -41,9 +56,12 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${inter.variable} h-full antialiased`}>
+    <html lang="en" className={`${inter.variable} ${display.variable} h-full antialiased`}>
       <body className="min-h-full bg-background text-foreground">
-        <Providers>{children}</Providers>
+        {/* Providers live in the route-group layouts, not here: the signed-in
+            app and the screen gallery need different ones, and deciding
+            between them up here would mean reading the current path. */}
+        {children}
         {/* The app is light-only, so the toasts are too — not the phone's setting. */}
         <Toaster position="top-center" theme="light" />
       </body>

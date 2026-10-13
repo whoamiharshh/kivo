@@ -48,6 +48,7 @@ import {
 import { MICRO_COVER_ADDRESS } from "@/lib/contracts";
 import { monadTestnet } from "viem/chains";
 import type { Address } from "viem";
+import { logServerError } from "@/lib/server/logging";
 
 const MAX_PAISE = 100_000_000_00n;
 
@@ -139,7 +140,7 @@ export const POST = handle(async (request, { caller }) => {
           409
         );
       }
-      console.error("[attest-oracle] store failed", error);
+      logServerError("attest-oracle store failed", error);
       throw new BadRequest(
         "We couldn't save that. Please try again.",
         "store_failed",

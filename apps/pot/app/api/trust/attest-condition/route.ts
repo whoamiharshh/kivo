@@ -41,6 +41,7 @@ import {
 import { GIFT_ADDRESS } from "@/lib/contracts";
 import { monadTestnet } from "viem/chains";
 import type { Address } from "viem";
+import { logServerError } from "@/lib/server/logging";
 
 export const POST = handle(async (request, { caller }) => {
   try {
@@ -90,7 +91,7 @@ export const POST = handle(async (request, { caller }) => {
       );
 
     if (error) {
-      console.error("[attest-condition] store failed", error);
+      logServerError("attest-condition store failed", error);
       throw new BadRequest(
         "We couldn't save that. Please try again.",
         "store_failed",

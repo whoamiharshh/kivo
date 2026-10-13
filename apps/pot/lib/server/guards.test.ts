@@ -9,6 +9,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  MAX_PER_WINDOW,
   assertIpUnderLimit,
   assertSameOrigin,
   clientIp,
@@ -33,10 +34,12 @@ beforeEach(() => {
 });
 
 describe("assertIpUnderLimit", () => {
-  it("allows ten requests in a minute and refuses the eleventh", () => {
+  it("allows the whole minute's allowance and refuses the one after", () => {
     const request = post({ "x-forwarded-for": "203.0.113.7" });
 
-    for (let i = 0; i < 10; i++) {
+    // Counted against the exported ceiling rather than a number copied here,
+    // so raising it for a crowded network cannot silently break this test.
+    for (let i = 0; i < MAX_PER_WINDOW; i++) {
       expect(() => assertIpUnderLimit(request)).not.toThrow();
     }
 
@@ -48,11 +51,18 @@ describe("assertIpUnderLimit", () => {
     }
   });
 
+  it("has room for a crowd behind one shared address", () => {
+    // A class, a hostel floor or a judging table arrives as a single NAT'd
+    // address. Ten a minute would have them blocking each other within
+    // seconds while every individual was behaving reasonably.
+    expect(MAX_PER_WINDOW).toBeGreaterThanOrEqual(100);
+  });
+
   it("counts each address separately", () => {
     const first = post({ "x-forwarded-for": "203.0.113.7" });
     const second = post({ "x-forwarded-for": "203.0.113.8" });
 
-    for (let i = 0; i < 10; i++) assertIpUnderLimit(first);
+    for (let i = 0; i < MAX_PER_WINDOW; i++) assertIpUnderLimit(first);
 
     // The second address has spent nothing, so it is unaffected.
     expect(() => assertIpUnderLimit(second)).not.toThrow();

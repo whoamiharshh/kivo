@@ -16,6 +16,11 @@ function describe(
   const amount = item.amount ? formatRupees(item.amount) : "";
 
   switch (item.kind) {
+    case "created":
+      return {
+        text: <>Pot created{item.amount ? ` with a ${amount} target` : ""}</>,
+        tone: "neutral",
+      };
     case "joined":
       return { text: <>{who(item.actor)} joined</>, tone: "neutral" };
     case "added":
@@ -52,8 +57,7 @@ function describe(
       return {
         text: (
           <>
-            Deadline passed without filling up —{" "}
-            <b className="tabular">{amount}</b> became refundable
+            Deadline passed without filling up — everyone can take their money back
           </>
         ),
         tone: "out",
@@ -62,7 +66,7 @@ function describe(
       return { text: <>{who(item.actor)} approved it</>, tone: "neutral" };
     case "cancelled":
       return {
-        text: <>{who(item.actor)} withdrew that request</>,
+        text: <>A repayment request was withdrawn</>,
         tone: "neutral",
       };
     case "paid":
@@ -79,7 +83,7 @@ function describe(
       return {
         text: (
           <>
-            Pot closed — <b className="tabular">{amount}</b> returned
+            Pot closed — what was left went back to members
           </>
         ),
         tone: "neutral",
@@ -88,7 +92,7 @@ function describe(
       return {
         text: (
           <>
-            <b>{who(item.actor)}</b> got back <b className="tabular">{amount}</b>
+            <b>{who(item.actor)}</b> got their money back
           </>
         ),
         tone: "out",
@@ -134,7 +138,26 @@ export function ActivityFeed({
                     aria-hidden="true"
                     className={`mt-[7px] size-1.5 shrink-0 rounded-full ${DOT[tone]}`}
                   />
-                  <p className="text-[15px] leading-snug">{text}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[15px] leading-snug">{text}</p>
+                    {item.occurredAt || item.transactionHash ? (
+                      <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+                        {item.occurredAt ? (
+                          <time dateTime={item.occurredAt}>
+                            {new Intl.DateTimeFormat(undefined, {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            }).format(new Date(item.occurredAt))}
+                          </time>
+                        ) : null}
+                        {item.transactionHash ? (
+                          <span aria-label="Event reference">
+                            Ref {item.transactionHash.slice(0, 10)}
+                          </span>
+                        ) : null}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               );
             })}

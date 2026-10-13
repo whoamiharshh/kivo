@@ -49,6 +49,7 @@ import {
 } from "@/lib/server/route-kit";
 import { monadTestnet } from "viem/chains";
 import { keccak256, toBytes, type Address } from "viem";
+import { logServerError } from "@/lib/server/logging";
 
 const KINDS = ["self_asserted", "gst", "cin"] as const;
 
@@ -130,7 +131,7 @@ export const POST = handle(async (request, { caller }) => {
       );
 
     if (error) {
-      console.error("[verify-employer] store failed", error);
+      logServerError("verify-employer store failed", error);
       throw new BadRequest(
         "We couldn't save that. Please try again.",
         "store_failed",

@@ -9,6 +9,7 @@
 import "server-only";
 import { NonceError } from "./nonce";
 import { ChainError } from "./chain";
+import { TrustSignerUnavailableError } from "./env";
 
 export class BadRequest extends Error {
   constructor(
@@ -45,6 +46,13 @@ export function asResponse(err: unknown): Response {
   if (err instanceof BadRequest) return fail(err.message, err.reason, err.status);
   if (err instanceof NonceError) return fail(err.message, err.reason, err.status);
   if (err instanceof ChainError) return fail(err.message, err.reason, err.status);
+  if (err instanceof TrustSignerUnavailableError) {
+    return fail(
+      "This action is temporarily unavailable. Existing funds are unchanged.",
+      err.reason,
+      503
+    );
+  }
   throw err;
 }
 

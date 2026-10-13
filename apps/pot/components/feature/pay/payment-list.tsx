@@ -62,7 +62,7 @@ export function PaymentList({
     <div className="space-y-6">
       {waiting.length > 0 ? (
         <section>
-          <h2 className="mb-3 text-overline uppercase text-muted-foreground">
+          <h2 className="mb-3 text-small text-muted-foreground">
             Needs you
           </h2>
           <div className="divide-y overflow-hidden rounded-lg border bg-card">
@@ -81,7 +81,7 @@ export function PaymentList({
       {rest.length > 0 ? (
         <section>
           {waiting.length > 0 ? (
-            <h2 className="mb-3 text-overline uppercase text-muted-foreground">
+            <h2 className="mb-3 text-small text-muted-foreground">
               Everything else
             </h2>
           ) : null}

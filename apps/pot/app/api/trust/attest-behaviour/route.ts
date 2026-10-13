@@ -41,6 +41,7 @@ import {
 import { BEHAVIOUR_SAVINGS_ADDRESS } from "@/lib/contracts";
 import { monadTestnet } from "viem/chains";
 import { keccak256, encodeAbiParameters, type Address } from "viem";
+import { logServerError } from "@/lib/server/logging";
 
 const SUBJECTS = ["commitment_goal", "accountability_pool", "savings_goal"] as const;
 const METRICS = ["steps", "screen_time_minutes"] as const;
@@ -142,7 +143,7 @@ export const POST = handle(async (request, { caller }) => {
           409
         );
       }
-      console.error("[attest-behaviour] insert failed", error);
+      logServerError("attest-behaviour insert failed", error);
       throw new BadRequest(
         "We couldn't save that. Please try again.",
         "store_failed",

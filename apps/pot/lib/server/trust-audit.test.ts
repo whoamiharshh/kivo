@@ -13,6 +13,7 @@
  * anywhere in the guard path fails it, however the field is named.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MAX_PER_WINDOW } from "./guards";
 
 /** Every row the code under test tried to insert, in order. */
 const inserted: { table: string; row: Record<string, unknown> }[] = [];
@@ -110,9 +111,12 @@ describe("audit rows for a rate-limit rejection", () => {
     const hot = () =>
       neverRuns(request({ origin: "https://pot.example", "x-forwarded-for": CLIENT_IP }));
 
-    // Ten pass the IP shield and fail later (no Privy tokens on the request),
-    // so only the eleventh is the rate-limit rejection under test.
-    for (let i = 0; i < 10; i++) await hot();
+    // A full minute's allowance passes the IP shield and fails later (no
+    // Privy tokens on the request), so only the one after it is the
+    // rate-limit rejection under test. Counted against the exported ceiling
+    // rather than a number copied here, because that ceiling is deliberately
+    // sized for a shared network and will be tuned again.
+    for (let i = 0; i < MAX_PER_WINDOW; i++) await hot();
     const response = await hot();
 
     expect(response.status).toBe(429);

@@ -27,9 +27,10 @@
  * Nothing is skipped at runtime.
  *
  * `lib/server/env.ts` still checks each secret again at the moment it is used.
- * That is deliberate overlap: this file fails a misconfigured server fast and
- * loudly, that one guarantees no code path can read a blank secret even if
- * this module is ever bypassed.
+ * The trust signer is optional while its default-deny gate is off, so the
+ * compromised legacy key can be removed without preventing the app from
+ * starting. Enabling signing requires a valid key and a separately approved,
+ * verified deployment.
  */
 import { z } from "zod";
 
@@ -54,15 +55,32 @@ const publicSchema = z.object({
 });
 
 /** Secrets. Validated only off the browser, for the reason in the header. */
-const serverSchema = z.object({
-  TRUST_SIGNER_KEY: z
-    .string()
-    .min(1, hint("TRUST_SIGNER_KEY", "The trust layer signs with it."))
-    .regex(
-      /^0x[0-9a-fA-F]{64}$/,
-      "TRUST_SIGNER_KEY must be 0x followed by 64 hex characters. Generate one with: openssl rand -hex 32"
-    ),
-});
+const serverSchema = z
+  .object({
+    TRUST_SIGNER_ENABLED: z.enum(["true", "false"]).optional(),
+    TRUST_SIGNER_KEY: z.string().optional(),
+  })
+  .superRefine(({ TRUST_SIGNER_ENABLED, TRUST_SIGNER_KEY }, context) => {
+    if (TRUST_SIGNER_ENABLED !== "true") return;
+
+    if (!TRUST_SIGNER_KEY) {
+      context.addIssue({
+        code: "custom",
+        path: ["TRUST_SIGNER_KEY"],
+        message: hint("TRUST_SIGNER_KEY", "Enabled trust signing requires it."),
+      });
+      return;
+    }
+
+    if (!/^0x[0-9a-fA-F]{64}$/.test(TRUST_SIGNER_KEY)) {
+      context.addIssue({
+        code: "custom",
+        path: ["TRUST_SIGNER_KEY"],
+        message:
+          "TRUST_SIGNER_KEY must be 0x followed by 64 hex characters. Generate one with: openssl rand -hex 32",
+      });
+    }
+  });
 
 /** True while `next build` is prerendering, when secrets are legitimately absent. */
 const building =
@@ -113,6 +131,7 @@ if (!publicParsed.success && !building) explain(publicParsed.error);
 
 if (typeof window === "undefined" && !building) {
   const serverParsed = serverSchema.safeParse({
+    TRUST_SIGNER_ENABLED: process.env.TRUST_SIGNER_ENABLED,
     TRUST_SIGNER_KEY: process.env.TRUST_SIGNER_KEY,
   });
   if (!serverParsed.success) explain(serverParsed.error);

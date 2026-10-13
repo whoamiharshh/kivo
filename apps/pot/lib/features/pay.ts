@@ -25,9 +25,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
-import { maxUint256, parseAbiItem, type PublicClient } from "viem";
+import { maxUint256, type PublicClient } from "viem";
 import {
-  DEPLOY_BLOCK,
   SOCIAL_PAY_ADDRESS,
   TEST_RUPEE_ADDRESS,
   ready,
@@ -63,23 +62,6 @@ import {
   type PaymentView as View,
 } from "./pay-state";
 
-const EVENTS = {
-  PaymentInitiated: parseAbiItem(
-    "event PaymentInitiated(uint256 indexed paymentId, address indexed sender, address indexed recipient, uint256 amount, bytes32 memoHash, uint64 deadline)"
-  ),
-  PaymentConfirmed: parseAbiItem(
-    "event PaymentConfirmed(uint256 indexed paymentId, address indexed recipient, uint256 amount)"
-  ),
-  PaymentReclaimed: parseAbiItem(
-    "event PaymentReclaimed(uint256 indexed paymentId, address indexed sender, uint256 amount)"
-  ),
-  PaymentDisputed: parseAbiItem(
-    "event PaymentDisputed(uint256 indexed paymentId, address indexed by)"
-  ),
-  DisputeResolved: parseAbiItem(
-    "event DisputeResolved(uint256 indexed paymentId, address indexed paidTo, uint256 amount)"
-  ),
-} as const;
 
 /**
  * Every payment the signed-in person is part of, newest first.
@@ -96,7 +78,7 @@ export function useMyPayments() {
   return useQuery({
     queryKey: ["payments", address],
     enabled: Boolean(address && client && ready.pay),
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
     queryFn: async (): Promise<View[]> => {
       if (!client || !address) return [];
       return loadPayments(client as PublicClient, address);
@@ -112,7 +94,7 @@ export function usePayment(paymentId: number | undefined) {
   return useQuery({
     queryKey: ["payment", paymentId, address],
     enabled: Boolean(paymentId !== undefined && client && address && ready.pay),
-    refetchInterval: 8_000,
+    refetchInterval: 24_000,
     queryFn: async (): Promise<View | null> => {
       if (!client || !address || paymentId === undefined) return null;
       const raw = (await client.readContract({
@@ -131,54 +113,74 @@ export function usePayment(paymentId: number | undefined) {
   });
 }
 
-/** What happened to one payment, oldest first, for its detail screen. */
+/**
+ * What happened to one payment, oldest first.
+ *
+ * ──────────────── read from the payment, not replayed ────────────────
+ *
+ * This was five parallel log scans. Monad's RPC caps a scan at 100 blocks and
+ * answers HTTP 413 beyond it, so all five failed on every poll and the feed
+ * was permanently empty. A payment's whole history is implied by its state,
+ * so it is derived rather than replayed.
+ *
+ * The cost, stated rather than hidden: there are no times. The feed is
+ * ordered, not dated, and no line claims an hour it cannot know. That comes
+ * back the day events are indexed server-side; this hook's shape would not
+ * change.
+ */
 export function usePaymentActivity(paymentId: number | undefined) {
   const client = usePublicClient();
 
   return useQuery({
     queryKey: ["payment-activity", paymentId],
     enabled: Boolean(paymentId !== undefined && client && ready.pay),
-    queryFn: async () => {
+    refetchInterval: 24_000,
+    queryFn: async (): Promise<{ kind: PayEventKind; key: string }[]> => {
       if (!client || paymentId === undefined) return [];
-      const id = BigInt(paymentId);
-      const scan = (event: (typeof EVENTS)[keyof typeof EVENTS]) =>
-        client.getLogs({
+
+      let row: PaymentRow;
+      try {
+        row = (await (client as PublicClient).readContract({
           address: SOCIAL_PAY_ADDRESS,
-          event,
-          args: { paymentId: id },
-          fromBlock: DEPLOY_BLOCK,
-          toBlock: "latest",
-        });
+          abi: socialPayAbi,
+          functionName: "getPayment",
+          args: [BigInt(paymentId)],
+        })) as PaymentRow;
+      } catch {
+        return [];
+      }
+      if (row.state === State.None) return [];
 
-      const [initiated, confirmed, reclaimed, disputed, resolved] =
-        await Promise.all([
-          scan(EVENTS.PaymentInitiated),
-          scan(EVENTS.PaymentConfirmed),
-          scan(EVENTS.PaymentReclaimed),
-          scan(EVENTS.PaymentDisputed),
-          scan(EVENTS.DisputeResolved),
-        ]);
-
-      const entries = [
-        ...initiated.map((l) => ({ kind: "sent" as const, log: l })),
-        ...confirmed.map((l) => ({ kind: "confirmed" as const, log: l })),
-        ...reclaimed.map((l) => ({ kind: "reclaimed" as const, log: l })),
-        ...disputed.map((l) => ({ kind: "disputed" as const, log: l })),
-        ...resolved.map((l) => ({ kind: "resolved" as const, log: l })),
+      const entries: { kind: PayEventKind; key: string }[] = [
+        { kind: "sent", key: `sent-${paymentId}` },
       ];
 
-      // Block number then log index: two events in one block still order
-      // correctly, which matters when a confirm and a resolve land together.
-      return entries.sort((a, b) => {
-        const byBlock =
-          Number(a.log.blockNumber ?? 0n) - Number(b.log.blockNumber ?? 0n);
-        return byBlock !== 0
-          ? byBlock
-          : Number(a.log.logIndex ?? 0) - Number(b.log.logIndex ?? 0);
-      });
+      if (row.state === State.Confirmed || row.state === State.Claimed) {
+        entries.push({ kind: "confirmed", key: `confirmed-${paymentId}` });
+      }
+      if (row.state === State.Reclaimed) {
+        entries.push({ kind: "reclaimed", key: `reclaimed-${paymentId}` });
+      }
+      if (row.state === State.Disputed || row.state === State.Resolved) {
+        entries.push({ kind: "disputed", key: `disputed-${paymentId}` });
+      }
+      if (row.state === State.Resolved) {
+        entries.push({ kind: "resolved", key: `resolved-${paymentId}` });
+      }
+
+      return entries;
     },
   });
 }
+
+/** The kinds of line a payment's history can carry. */
+export type PayEventKind =
+  | "sent"
+  | "confirmed"
+  | "reclaimed"
+  | "disputed"
+  | "resolved";
+
 
 /* ═══════════════════════════ reads, shared ═══════════════════════════ */
 
@@ -186,46 +188,48 @@ async function loadPayments(
   client: PublicClient,
   me: `0x${string}`
 ): Promise<View[]> {
-  const [asSender, asRecipient] = await Promise.all([
-    client.getLogs({
+  // Read, don't replay. Monad's RPC refuses any log scan wider than 100
+  // blocks — HTTP 413, `eth_getLogs is limited to a 100 range` — and the
+  // deploy block is far further back than that and receding by about 216,000
+  // blocks a day, so finding payments by their `PaymentInitiated` event
+  // stopped being possible minutes after launch. `paymentCount()` says how
+  // many exist and each `getPayment` names both sides.
+  //
+  // One multicall, not a read per id: a person with twenty payments should
+  // cost one round trip rather than twenty.
+  const count = Number(
+    (await client.readContract({
       address: SOCIAL_PAY_ADDRESS,
-      event: EVENTS.PaymentInitiated,
-      args: { sender: me },
-      fromBlock: DEPLOY_BLOCK,
-      toBlock: "latest",
-    }),
-    client.getLogs({
-      address: SOCIAL_PAY_ADDRESS,
-      event: EVENTS.PaymentInitiated,
-      args: { recipient: me },
-      fromBlock: DEPLOY_BLOCK,
-      toBlock: "latest",
-    }),
-  ]);
-
-  // The two scans can overlap, so ids go through a Set before any reads.
-  const ids = [
-    ...new Set(
-      [...asSender, ...asRecipient]
-        .map((l) => l.args.paymentId)
-        .filter((id): id is bigint => id !== undefined)
-        .map(Number)
-    ),
-  ];
-
-  if (ids.length === 0) return [];
-
-  const payments = await Promise.all(
-    ids.map(async (id) => ({
-      id,
-      payment: (await client.readContract({
-        address: SOCIAL_PAY_ADDRESS,
-        abi: socialPayAbi,
-        functionName: "getPayment",
-        args: [BigInt(id)],
-      })) as PaymentRow,
-    }))
+      abi: socialPayAbi,
+      functionName: "paymentCount",
+    })) as bigint
   );
+  if (count === 0) return [];
+
+  const everyId = Array.from({ length: count }, (_, i) => i);
+  const everyPayment = (await client.multicall({
+    allowFailure: false,
+    contracts: everyId.map((id) => ({
+      address: SOCIAL_PAY_ADDRESS,
+      abi: socialPayAbi,
+      functionName: "getPayment" as const,
+      args: [BigInt(id)],
+    })),
+  })) as unknown as PaymentRow[];
+
+  const mine = me.toLowerCase();
+  const payments: { id: number; payment: PaymentRow }[] = [];
+  everyId.forEach((id, i) => {
+    const row = everyPayment[i]!;
+    if (row.state === State.None) return;
+    if (
+      row.sender.toLowerCase() === mine ||
+      row.recipient.toLowerCase() === mine
+    ) {
+      payments.push({ id, payment: row });
+    }
+  });
+  if (payments.length === 0) return [];
 
   const views = await decorate(client, me, payments);
   return views.sort((a, b) => Number(b.createdAt - a.createdAt));

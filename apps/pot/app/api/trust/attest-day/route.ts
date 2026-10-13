@@ -41,6 +41,7 @@ import {
 import { ACCOUNTABILITY_POOL_ADDRESS, isSet } from "@/lib/contracts";
 import { monadTestnet } from "viem/chains";
 import { keccak256, encodeAbiParameters, type Address } from "viem";
+import { logServerError } from "@/lib/server/logging";
 
 const METRICS = ["steps", "screen_time_minutes"] as const;
 
@@ -159,7 +160,7 @@ export const POST = handle(async (request, { caller }) => {
           409
         );
       }
-      console.error("[attest-day] insert failed", error);
+      logServerError("attest-day insert failed", error);
       throw new BadRequest(
         "We couldn't save that. Please try again.",
         "store_failed",

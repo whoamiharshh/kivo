@@ -21,6 +21,7 @@ import {
   GuardError,
   hashedIp,
 } from "./guards";
+import { logServerError } from "./logging";
 
 /** A rule was broken. Carries a status and a machine-readable reason. */
 export class TrustError extends Error {
@@ -225,7 +226,7 @@ export async function audit(entry: {
   // An unwritable audit row must not take a payment down with it, but it is a
   // real problem, so it is loud in the server log.
   if (error) {
-    console.error("[audit] could not write entry", entry.event, error.message);
+    logServerError("audit write failed", error);
   }
 }
 
@@ -304,7 +305,7 @@ export function handle(
         });
         return json({ error: err.message, reason: err.reason }, err.status);
       }
-      console.error("[route]", err);
+      logServerError("authenticated route failed", err);
       return json({ error: "Something went wrong. Please try again." }, 500);
     }
   };

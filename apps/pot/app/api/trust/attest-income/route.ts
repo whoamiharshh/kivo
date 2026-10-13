@@ -45,6 +45,7 @@ import { INCOME_SHARE_ADDRESS, incomeShareAbi } from "@/lib/contracts";
 import { reader } from "@/lib/server/chain";
 import { monadTestnet } from "viem/chains";
 import type { Address } from "viem";
+import { logServerError } from "@/lib/server/logging";
 
 /** ₹10,00,00,000 in paise. A sanity ceiling, not a product rule. */
 const MAX_INCOME = 100_000_000_00n;
@@ -81,7 +82,7 @@ export const POST = handle(async (request, { caller }) => {
         args: [BigInt(agreementId)],
       })) as typeof agreement;
     } catch (err) {
-      console.error("[attest-income] agreement read failed", err);
+      logServerError("attest-income agreement read failed", err);
       throw new BadRequest(
         "We couldn't check that agreement. Please try again.",
         "agreement_read_failed",
@@ -156,7 +157,7 @@ export const POST = handle(async (request, { caller }) => {
           409
         );
       }
-      console.error("[attest-income] insert failed", error);
+      logServerError("attest-income insert failed", error);
       throw new BadRequest(
         "We couldn't save that. Please try again.",
         "store_failed",

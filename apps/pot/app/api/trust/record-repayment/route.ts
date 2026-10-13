@@ -41,7 +41,7 @@ import {
 
 const MAX_PAISE = 100_000_000_00n;
 
-export const POST = handle(async (request, { caller }) => {
+export const POST = handle(async (request) => {
   try {
     const b = await body(request);
     const agreementId = readId(b, "agreementId");
@@ -65,13 +65,6 @@ export const POST = handle(async (request, { caller }) => {
       repaymentPaise,
       signature,
     });
-
-    console.info(
-      "[record-repayment] agreement=%d by=%s tx=%s",
-      agreementId,
-      caller.did,
-      txHash
-    );
 
     return ok({ txHash });
   } catch (err) {

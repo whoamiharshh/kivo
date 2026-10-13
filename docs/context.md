@@ -1,8 +1,11 @@
 # Context — where Pot stands and why
 
-Last verified: **2026-10-10**. Every ✅ below was re-run on that date, not
-carried over from notes. `README.md` is the document for a newcomer or a judge;
-this one is for whoever picks the work up next.
+Historical snapshot from **2026-10-10**. The deployment, app routes, tests and
+security posture changed after this snapshot; its status table and statements
+about what is deployed or implemented are not current. For evidence verified
+on 2026-10-12, use [production-readiness.md](production-readiness.md) and
+[`apps/pot/DEPLOY.md`](../apps/pot/DEPLOY.md). The product and contract design
+notes below may still be useful, but are not a current release checklist.
 
 ## The one-line product
 

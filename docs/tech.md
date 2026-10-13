@@ -21,10 +21,10 @@ nothing else hardcodes it.
 ## Contracts
 
 This section covers the two contracts Pot itself uses. `packages/contracts/`
-also holds six written for the other prompt tracks — `SocialPay.sol`,
+also holds seven written for the other prompt tracks — `SocialPay.sol`,
 `Gift.sol`, `BehaviourSavings.sol`, `SalaryStream.sol`, `IncomeShare.sol`,
-`MicroCover.sol` — which share `TestRupee` and the same deploy script but have
-no screens.
+`MicroCover.sol`, and `AccountabilityPool.sol` — which share `TestRupee` and
+the same deploy script.
 `context.md` lists them; `limitations.md` covers what each cannot do.
 
 ### `TestRupee.sol` — the play money
@@ -76,8 +76,9 @@ Collecting [Collecting] --target reached--> Funded [Ready to spend]
 
 **Events** — `PotCreated`, `MemberJoined`, `Deposited`, `PotFunded`,
 `RefundingStarted`, `SpendRequested`, `SpendApproved`, `SpendCancelled`,
-`SpendExecuted`, `PotClosed`, `Refunded`. The activity feed is built from these
-and nothing else.
+`SpendExecuted`, `PotClosed`, `Refunded`. Local source now indexes these events
+through finalized blocks. The schema is not applied and the worker has not run,
+so indexed activity is not yet available in a deployed environment.
 
 ### The rules the tests defend
 
@@ -100,12 +101,11 @@ rule is applied in the contract, the app, the tests and the docs.
 
 ### Tests
 
-`forge test` → **334 pass** across nine suites. Pot's own 82 are 80 in
-`test/PotManager.t.sol` (lifecycle, rules, and a `test_RevertWhen_*` per named
-error) and 2 in `test/PotManagerSecurity.t.sol` — a reentrancy attempt on
-`claimRefund`, and a fuzz test that total claims never exceed total
-contributions. The other 252 cover the six other-track contracts: MicroCover
-62, SocialPay 50, Gift 38, SalaryStream 37, BehaviourSavings 34, IncomeShare 31.
+The last recorded `forge test --summary` reported **408 passed** across eleven
+suites: PotManager 91, PotManager security 2, MicroCover 62, SocialPay 50,
+BehaviourSavings 49, AccountabilityPool 39, Gift 38, SalaryStream 37,
+IncomeShare 31, and trust-layer digests 9. Foundry was unavailable during the
+2026-10-12 continuation, so this result was not rerun then.
 
 `forge lint` leaves 63 accepted warnings; `context.md` says which and why.
 
@@ -117,10 +117,12 @@ Paths in this section are relative to `apps/pot/`.
 
 | Route | File | What it is |
 |---|---|---|
-| `/` | `app/page.tsx` | Home: test-money card, your pots, "Create a pot" |
-| `/create` | `app/create/page.tsx` | Name, target, deadline, member cap, repayment limit, your name |
-| `/join/[potId]/[code]` | `app/join/[potId]/[code]/page.tsx` | What the invite link opens: sign in, then join |
-| `/pot/[id]` | `app/pot/[id]/page.tsx` | The pot: progress, members, feed, and every action |
+| `/` | `app/(app)/page.tsx` | Home behind the sign-in gate |
+| `/create` | `app/(app)/create/page.tsx` | Create a pot |
+| `/join/[potId]/[code]` | `app/(app)/join/[potId]/[code]/page.tsx` | Invite and join |
+| `/pot/[id]` | `app/(app)/pot/[id]/page.tsx` | Pot details and actions |
+| `/agreements` | `app/(app)/agreements/page.tsx` | Explicit unavailable state; not an Agreements workflow |
+| `/cover` | `app/(app)/cover/page.tsx` | Existing cover list; creating policies is unavailable |
 
 Repay, approve, add money, close and claim are dialogs on the pot screen, not
 separate routes.
@@ -157,7 +159,10 @@ gas sponsorship, no separate smart account — then waits on
 `publicClient.waitForTransactionReceipt` (90s) and throws unless the receipt
 says success. Hooks return only after the chain has settled, so the UI never
 shows a result that hasn't happened. On failure, `readableError` turns the
-contract's named error into a sentence a person can act on.
+contract's named error into a sentence a person can act on. A sponsored-send
+refusal is not retried without sponsorship. Server trust signing is disabled
+by default in source until an approved replacement deployment is verified;
+the local guard rejects the known compromised legacy signer address.
 
 `useAddMoney` is the one two-call action: if the allowance is short it sends
 `approve(PotManager, maxUint256)` first, then `deposit`. The person sees one
@@ -166,30 +171,45 @@ contract's named error into a sentence a person can act on.
 ### How a read happens
 
 TanStack Query, `staleTime` 4s, polling every 8–10s. Balances and pot state
-come from **one `multicall` per query**; pot discovery and the feed come from
-`getLogs` scoped `fromBlock: DEPLOY_BLOCK` — which is why that env var exists.
-`useMyPots` finds pots from `MemberJoined` filtered on the viewer's address
-(the creator is a member, so created pots show up too).
+come from contract reads and multicalls. `useMyPots` currently reads `potCount`
+and checks membership for each id, so its cost grows with the entire deployment.
+The activity feed now requests pages from `/api/pots/activity`; that endpoint
+verifies both Privy tokens and confirms membership at a finalized block before
+reading service-role indexed rows. `apps/pot/lib/server/pot-indexer.ts` scans
+at most 100 blocks per RPC request and indexes only through Monad's `finalized`
+tag, with idempotent event identities and a lease/checkpoint. The accompanying
+Supabase migration is local source only and has not been applied; therefore no
+deployed activity history is available or independently verified yet.
 
 ### Offchain text
 
 Pot names, display names and memo text never go onchain — only `keccak256`
-hashes do. `supabase/schema.sql` defines three tables: `pots` (`pot_id`,
-`name`, `per_person_paise`, `invite_code`, `created_at`), `profiles`
-(`address`, `name`, `updated_at`) and `memos` (`hash`, `text`, `created_at`).
-With no Supabase credentials, `store.ts` writes the same shapes to the
-browser's own storage, which is fine for a single-device demo. The policies are
-open and the schema says why.
+hashes do. The base `supabase/schema.sql` is not the complete production
+schema: migrations split invite codes into `pots_private` and add the server-
+only trust and activity tables. Review and apply migrations in the intended
+environment before relying on those paths. `store.ts` keeps browser-local
+fallbacks for offchain text; those fallbacks do not synchronize between
+devices.
 
-### Env vars (all public, all `NEXT_PUBLIC_*`)
+### Env vars
 
 | Var | Needed for | Blank means |
 |---|---|---|
 | `NEXT_PUBLIC_PRIVY_APP_ID` | Google sign-in, sponsored actions | Setup card instead of the app |
 | `NEXT_PUBLIC_POT_MANAGER_ADDRESS` | everything | Setup card |
 | `NEXT_PUBLIC_TEST_RUPEE_ADDRESS` | test money | Setup card |
-| `NEXT_PUBLIC_DEPLOY_BLOCK` | feed + pot discovery | Scans from block 0 — slow but correct |
+| `NEXT_PUBLIC_DEPLOY_BLOCK` | indexer start block | Indexer starts at block 0 if blank; configure the actual deployment block before enabling indexing |
 | `NEXT_PUBLIC_SUPABASE_URL` / `_ANON_KEY` | names across devices | On-device storage |
+| `NEXT_PUBLIC_APP_URL` | canonical origin for API same-origin checks | Request origin is checked against its own host; production proxy origin remains unverified |
+| `NEXT_PUBLIC_RPC_URL` | server chain reads and event indexing | Public RPC fallback |
+
+Server-only signing and indexer variables are not public identifiers:
+`TRUST_SIGNER_ENABLED` defaults to `false`; `TRUST_SIGNER_KEY` is required only
+when signing is explicitly enabled and the known compromised legacy signer is
+rejected; `POT_INDEXER_SECRET` protects the manual indexing route. Do not enable
+signing until an approved replacement deployment is independently verified,
+and do not provision the indexer secret before the migration and scheduler are
+reviewed for that environment.
 
 ### UI language rule (brief §8)
 
@@ -205,19 +225,19 @@ copy in `apps/pot/`, `components/` and `lib/`.
 ```bash
 # contracts
 cd packages/contracts
-forge test                 # 334 pass
+forge test                 # last recorded result: 408 pass; rerun locally
 forge build
 forge lint                 # 63 accepted warnings, see context.md
 forge script script/Deploy.s.sol --rpc-url monad_testnet --account pot-dev --broadcast
 
 # app
 cd apps/pot
-npm install
-npm run dev                # localhost:3000
-npm run build              # production build
-npx tsc --noEmit           # typecheck
-npx eslint app components lib
-npm run gen:abis           # after any contract change — regenerates lib/abis.ts
+pnpm install
+pnpm dev                   # localhost:3000
+pnpm build                 # production build
+pnpm typecheck             # typecheck
+pnpm lint                  # lint
+pnpm gen:abis              # after contract changes — regenerates lib/abis.ts
 ```
 
 **After changing a contract, always** `forge build` then `npm run gen:abis`,

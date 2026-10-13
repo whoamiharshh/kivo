@@ -62,7 +62,7 @@ async function post<T>(path: string, payload: unknown): Promise<T> {
     });
   } catch {
     throw new TrustCallError(
-      "We couldn't reach the server. Check your connection and try again.",
+      "We couldn't reach the server. Check that you're online and try again.",
       0,
       "network"
     );

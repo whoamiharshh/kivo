@@ -28,6 +28,7 @@ import {
 import { POT_MANAGER_ADDRESS } from "@/lib/contracts";
 import { monadTestnet } from "viem/chains";
 import type { Address } from "viem";
+import { logServerError } from "@/lib/server/logging";
 
 const ACTIONS = ["join_pot"] as const;
 
@@ -56,7 +57,7 @@ export const POST = handle(async (request, { caller }) => {
         .maybeSingle();
 
       if (error) {
-        console.error("[authorize-action] lookup failed", error);
+        logServerError("authorize-action lookup failed", error);
         throw new BadRequest(
           "Something went wrong. Please try again.",
           "lookup_failed",

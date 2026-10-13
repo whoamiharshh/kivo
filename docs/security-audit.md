@@ -4,6 +4,12 @@
 **Commit state:** the repository has **no commits** (`git log` → "does not have any commits yet"), so findings reference the working tree.
 **Deployment state:** nothing is deployed to any chain. Every exploit below is reachable in code, not live.
 
+> **Historical report, superseded.** The repository and deployment changed after
+> this 2026-10-10 snapshot. Its claims that no trust routes or deployments
+> exist, and its invite-code and savings findings, must not be treated as
+> current without rechecking. The 2026-10-12 read-only status and verified
+> deployed role bindings are recorded in [production-readiness.md](production-readiness.md).
+
 ---
 
 ## 1. Executive summary

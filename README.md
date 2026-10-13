@@ -14,26 +14,29 @@ everybody takes their own money back. Nobody has to hold the group's money.
 
 | Part | Status |
 |---|---|
-| Contracts written | ✅ Pot itself: `TestRupee.sol`, `PotManager.sol`. Six more for the other tracks: `SocialPay.sol`, `Gift.sol`, `BehaviourSavings.sol`, `SalaryStream.sol`, `IncomeShare.sol`, `MicroCover.sol` |
+| Contracts written | ✅ Pot itself: `TestRupee.sol`, `PotManager.sol`. Seven more for the other tracks: `SocialPay.sol`, `Gift.sol`, `BehaviourSavings.sol`, `SalaryStream.sol`, `IncomeShare.sol`, `MicroCover.sol`, `AccountabilityPool.sol` |
 | Contracts compile | ✅ Solc 0.8.24, OpenZeppelin v5.7.0 |
-| Tests | ✅ **334 of 334 pass** (`forge test`, nine suites) — Pot 82, MicroCover 62, SocialPay 50, Gift 38, SalaryStream 37, BehaviourSavings 34, IncomeShare 31 |
-| App built | ✅ 5 screens, typechecks clean, production build passes |
-| Deployed to Monad Testnet | ❌ **not done** — needs a funded testnet account (step 2) |
-| App running against a live deployment | ❌ not done — blocked on the deploy above |
-| Deployed to Vercel | ❌ not done (step 6) |
-| User testing with real people | ❌ not done (step 7) |
+| Tests | ✅ **408 contract tests passed, 0 failed** and **127 app tests passed**, re-run on 2026-10-13. Typecheck and lint are clean and the production build passes — including from a clean checkout with no environment set. |
+| App state | ⚠️ Every screen is built. Pots, Pay, Gifts, Savings, Pools and Streams run end to end in code. **Agreements** (record, view, close out) and **Cover** (hold a premium, take it back) work; recording an Agreement repayment, binding a Cover policy and deciding a claim are **labelled unavailable** — they need a licensed partner's key, and nothing pretends otherwise. Authenticated browser journeys have **not yet been verified end to end**. |
+| Deployed to Monad Testnet | ✅ A **fresh deployment of all nine contracts is live** and source-verified (Sourcify `exact_match`); roles read back from the chain. Addresses below. The earlier deployment is retired. |
+| App deployed to Vercel | ❌ not yet — see `docs/launch-checklist.md` |
+| User testing with real people | ❌ not done yet — script and questionnaire are ready (`docs/five-phone-test.md`) |
 
 Note on the test count: the original brief mentioned 20 tests for Pot. Pot's
 rules grew (a target, a deadline, refunds on failure, a cumulative spending
-budget) and its suite grew with them to 82. No rule was weakened to make a
-test pass. The other 252 tests cover the six contracts written for the other
-tracks, which are listed in the table above and in `docs/limitations.md`; the
-rest of this README is about Pot only.
+budget) and its suite grew with them to 91, plus 2 dedicated security tests.
+No rule was weakened to make a test pass. The remaining 315 tests cover the six
+contracts written for the other tracks and the trust layer's digests, which are
+listed in the table above and in `docs/limitations.md`.
 
-## What actually works today
+Both test counts above were produced by running the suites on 2026-10-13, not
+carried over from earlier notes. No contract source or deployed state changed
+in that run.
 
-Everything below is implemented and covered by the contract test suite — but it
-has not yet been exercised by a person tapping through a live app:
+## Implemented contract behavior
+
+The following rules are implemented in the contracts and have contract-test
+coverage. The live user journey has not been exercised end to end:
 
 - **Create a pot** with a name, the amount the group is collecting, the date it
   must be collected by, a no-questions repayment limit, and a cap on how many
@@ -56,7 +59,11 @@ has not yet been exercised by a person tapping through a live app:
 - **The pot doesn't fill up in time** → everyone takes their own money back.
   Each person claims their own share, so nobody has to wait on the creator, and
   an unclaimed share stays claimable indefinitely.
-- **An activity feed** built entirely from contract events.
+- **Pot event indexing** now has local source for finalized logs, real block
+  timestamps, transaction hashes, pagination, deduplication, and separate
+  deposits. Its Supabase migration has not been applied, its worker has not run,
+  and no deployed app serves the indexed feed; treat this as implemented code,
+  not a working deployed feature.
 
 ## What is deliberately not built
 
@@ -64,21 +71,43 @@ Scheduled or automatic pulls, recurring rent, landlord and utility payouts,
 penalties, moving money between members, real-money top-up, mainnet, and any
 personal data onchain. Only hashes of names and memo text ever reach the chain.
 
+## What is not finished — future work
+
+Said plainly, so nothing here reads as a promise:
+
+- **A licensed partner.** Cover needs an insurer to take on risk and decide
+  claims; Agreements needs a lending partner to record repayments. None exists
+  here, so those two actions are unavailable and labelled so. Real money in India
+  would also need professional legal, tax and licensing advice (see
+  `docs/limitations.md`) — nothing here claims compliance.
+- **Finding your pots at scale.** Home scans the 200 newest pots on-chain. A
+  production version needs an indexer or a per-member list in the contract.
+  See `docs/pot-discovery.md`.
+- **Activity history.** The feed is rebuilt from contract state, so it has no
+  timestamps and shows one total per contributor. An indexer would restore both.
+- **Dual deployment.** Moving to new contracts is a clean cutover; running old and
+  new side by side (and carrying names across) is not built.
+- **Evidence for claims.** Cover claims record only a typed description — there is
+  no file upload.
+- **Monitoring, load testing, analytics, a staging environment.** None exist.
+- **Real users.** No one outside the build has used it yet; the questionnaire and
+  test script are ready, and `docs/feedback-log.md` records only real sessions.
+
 ## Structure
 
 A pnpm workspace. `pnpm-workspace.yaml` takes in `apps/*` and `packages/*`.
 
 - `packages/contracts/` — Solidity (Foundry): `TestRupee.sol`, `PotManager.sol`,
   `SocialPay.sol`, `Gift.sol`, `BehaviourSavings.sol`,
-  `SalaryStream.sol`, `IncomeShare.sol`, `MicroCover.sol`, **334 tests**
-  across nine suites, deploy script
+  `SalaryStream.sol`, `IncomeShare.sol`, `MicroCover.sol`,
+  `AccountabilityPool.sol`, **408 tests** across eleven suites, deploy script
 - `apps/pot/` — Next.js 16 app (Privy + wagmi/viem + Tailwind + shadcn/ui on Base UI)
 - `apps/trust/` — Expo Router app for iOS, Android and web. **Not built yet.**
 - `packages/verification/` — the native trust layer. **Not built yet.**
 - `packages/shared-ui/` — design tokens shared by both apps. **Not built yet.**
 - `supabase/schema.sql` — offchain store for names and memo text
-- `supabase/migrations/` — the trust-layer schemas (micro-insurance evidence
-  store is here; the earlier ones currently live only in the Supabase project)
+- `supabase/migrations/` — versioned trust-layer and local Pot activity-index
+  migrations. The new activity migration is not applied to Supabase.
 - `docs/limitations.md` — what this cannot do, cannot verify, or does not do yet
 - `docs/insurer-api.md` — the app ↔ licensed-insurer contract for `MicroCover`
 - `docs/context.md` — where the build stands, what's blocked, decisions taken
@@ -146,10 +175,12 @@ forge install foundry-rs/forge-std OpenZeppelin/openzeppelin-contracts
 forge test
 ```
 
-You should see `334 tests passed, 0 failed` — Pot's own 82 plus the six
-other-track contracts' 252.
+The last recorded Foundry run reported `408 tests passed, 0 failed` across eleven
+suites. Foundry was unavailable during the 2026-10-12 continuation, so rerun
+this command after installing Foundry in your environment before relying on
+that result.
 
-## Step 2 — put the contracts on Monad Testnet  ⟵ **needs you**
+## Step 2 — put the contracts on Monad Testnet  ✅ **done**
 
 This is the one step that spends something: a tiny amount of testnet MON to
 pay for publishing. It is free to obtain and worthless outside the testnet.
@@ -268,18 +299,33 @@ attested device; there is no licensed insurer, no Account Aggregator consent
 flow and no real parametric oracle. `docs/limitations.md` is the long version,
 `docs/security-audit.md` the findings list.
 
-## Step 3 — Privy, so people can sign in with Google  ⟵ **needs you**
+## Step 3 — Privy, so people can sign in with Google  ⟵ **two dashboard toggles left**
 
 Privy handles the Google sign-in, quietly makes an account for each person, and
 pays the network fees for them so the app never mentions fees at all.
 
-1. Make an app at <https://dashboard.privy.io>.
-2. **Login methods** → turn on **Google**, turn everything else off.
+The three values are already in `apps/pot/.env.local`: `NEXT_PUBLIC_PRIVY_APP_ID`,
+`PRIVY_APP_SECRET`, and `PRIVY_VERIFICATION_KEY` (the app's **public** key, read
+from Privy's own API — it is not a secret and is safe in the file).
+
+What still needs a human in <https://dashboard.privy.io>:
+
+1. **Login methods** → turn on **Google**, turn everything else off.
+2. **User management → Authentication → Advanced** → turn on
+   **"Return user data in an identity token"**. This one is not optional and it
+   is easy to miss. The API verifies two tokens, and the person's account is
+   read from the identity token; without it every call to the trust layer
+   answers `401 missing_identity_token`, which in practice means **nobody can
+   join a pot**. See `apps/pot/lib/server/privy.ts`.
 3. **Fee sponsorship** → enable it and cover **Monad Testnet**. Privy has been
    subsidising Monad Testnet usage; if the chain is not offered on your plan,
    email `monad@privy.io`. Without this step, actions will fail with a
    "fees aren't being covered" message.
-4. Copy the **App ID** into `apps/pot/.env.local`.
+
+> **Rotate the Supabase service key and the Privy app secret before this is
+> public.** Both were pasted into a chat transcript during development, so they
+> must be treated as known. Rotating them is a dashboard action in each
+> service, then update `apps/pot/.env.local` and the Vercel environment.
 
 ## Step 4 — the offchain text store (optional)
 
@@ -307,11 +353,13 @@ pnpm install
 pnpm dev
 ```
 
-Open <http://localhost:3000>. If a value in `.env.local` is missing or
-malformed the app **refuses to start** and prints one message listing every
-problem at once, rather than failing later on the screen that needed it. The
-check lives in `apps/pot/lib/env.ts` and covers the Privy app ID, both
-Supabase values and `TRUST_SIGNER_KEY`.
+Open <http://localhost:3000>. In development, missing public integration values
+are reported and affected screens remain gated; production validates required
+public configuration at startup. `TRUST_SIGNER_KEY` is optional while
+`TRUST_SIGNER_ENABLED=false` (the default). Server signing must remain disabled
+until an approved replacement signer is deployed and verified. The known
+compromised legacy signer address is refused by the server guard regardless of
+that flag. This source change does not revoke any deployed contract role.
 
 To check it builds the way it will in production:
 
@@ -322,7 +370,7 @@ pnpm build
 To run the tests:
 
 ```bash
-pnpm test        # app: nonce replay, request guards       (18 tests)
+pnpm test        # app: 76 tests in the current source tree
 cd ../../packages/contracts && forge test   # contracts    (408 tests)
 ```
 
@@ -403,48 +451,54 @@ actually happened in `docs/feedback-log.md`.
 
 ## Deployed addresses
 
-Monad Testnet (chain id 10143), deployed at block **69937293**. Every contract
-is source-verified on Sourcify — each one returned `exact_match`, checked
-against the API rather than trusted from the CLI's exit code.
+Monad Testnet (chain id 10143), deployed at block **70499937** on 2026-10-13. Every
+contract is source-verified on Sourcify — each returned `exact_match` for both
+creation and runtime code, checked through the Sourcify API rather than trusted
+from the CLI's exit code. All seven role addresses below were read back from the
+chain after deployment.
 
 | Contract | Address | Explorer |
 |---|---|---|
-| TestRupee | `0xCc29aA71B0f98c90AF219c2CdC9cBAd68B86BdaA` | [view](https://testnet.monadexplorer.com/address/0xCc29aA71B0f98c90AF219c2CdC9cBAd68B86BdaA) |
-| PotManager | `0x2818b52178840Ef546fc728c12daec39Be235968` | [view](https://testnet.monadexplorer.com/address/0x2818b52178840Ef546fc728c12daec39Be235968) |
-| SocialPay | `0x4f407850A04286c6D2362C311E70586cc73e1133` | [view](https://testnet.monadexplorer.com/address/0x4f407850A04286c6D2362C311E70586cc73e1133) |
-| Gift | `0xeB89662b92C881ADeF9F5c410f357Fc1dc3b0d5d` | [view](https://testnet.monadexplorer.com/address/0xeB89662b92C881ADeF9F5c410f357Fc1dc3b0d5d) |
-| BehaviourSavings | `0x008A65Aa1dE78Fe2551427f17e63D2881AF29930` | [view](https://testnet.monadexplorer.com/address/0x008A65Aa1dE78Fe2551427f17e63D2881AF29930) |
-| AccountabilityPool | `0x14cD8532b4aA4eF5E583CEb82db7Ec29e5517994` | [view](https://testnet.monadexplorer.com/address/0x14cD8532b4aA4eF5E583CEb82db7Ec29e5517994) |
-| SalaryStream | `0x208fdB568CF949Fb7Fdc02d74Ed9811249e73974` | [view](https://testnet.monadexplorer.com/address/0x208fdB568CF949Fb7Fdc02d74Ed9811249e73974) |
-| IncomeShare | `0x80340B46Ab439C722E0C990F532f94C90A7cF2eF` | [view](https://testnet.monadexplorer.com/address/0x80340B46Ab439C722E0C990F532f94C90A7cF2eF) |
-| MicroCover | `0x380491FfD851602100aDBBf855ff403623db5816` | [view](https://testnet.monadexplorer.com/address/0x380491FfD851602100aDBBf855ff403623db5816) |
+| TestRupee | `0xD5ce29B7a36C721ba686032B627c9bF5B30981c0` | [view](https://testnet.monadexplorer.com/address/0xD5ce29B7a36C721ba686032B627c9bF5B30981c0) |
+| PotManager | `0x26C9BC9DE890e78a125657f921a14Fa62d44De65` | [view](https://testnet.monadexplorer.com/address/0x26C9BC9DE890e78a125657f921a14Fa62d44De65) |
+| SocialPay | `0xB6588749C62d1F533017E844A1F497FE20eB62fB` | [view](https://testnet.monadexplorer.com/address/0xB6588749C62d1F533017E844A1F497FE20eB62fB) |
+| Gift | `0xD0Abf14302A68E48E9A553c0cCDEE399C50Fb4d7` | [view](https://testnet.monadexplorer.com/address/0xD0Abf14302A68E48E9A553c0cCDEE399C50Fb4d7) |
+| BehaviourSavings | `0xb19bc9eb11188611fe0DB519C3edD8909fc722cd` | [view](https://testnet.monadexplorer.com/address/0xb19bc9eb11188611fe0DB519C3edD8909fc722cd) |
+| AccountabilityPool | `0x0E6400a5D4766Cc71D71Aa5690C4C8DE76DF2F11` | [view](https://testnet.monadexplorer.com/address/0x0E6400a5D4766Cc71D71Aa5690C4C8DE76DF2F11) |
+| SalaryStream | `0xEAcBd5B5808B79A835B7C6d020f7672B8017E9dC` | [view](https://testnet.monadexplorer.com/address/0xEAcBd5B5808B79A835B7C6d020f7672B8017E9dC) |
+| IncomeShare | `0x2a61d3c3D4Ea54a3533b1CD586DAC6FEe0129783` | [view](https://testnet.monadexplorer.com/address/0x2a61d3c3D4Ea54a3533b1CD586DAC6FEe0129783) |
+| MicroCover | `0x329Ae1ea1C05274eC4284CEb361b6CeD9b6821F2` | [view](https://testnet.monadexplorer.com/address/0x329Ae1ea1C05274eC4284CEb361b6CeD9b6821F2) |
+
+> **Replaced deployment.** An earlier deployment (block 69937293) is retired: the
+> keys behind its immutable roles were exposed, so the app no longer uses it and it
+> should not be trusted with anything. Its addresses are not listed here. One pot
+> on it still holds ₹2,000 of test money, which its contributor can reclaim after
+> its deadline without any key.
 
 ### Who holds which role, and why it matters
 
 Four of these contracts bake an address into an `immutable` at deployment. The
-split below keeps the server's signing key able to *authorise* things while
-owning nothing and holding no money — which is the claim `docs/trust-layer.md`
-makes, so it has to be true on chain and not just in prose.
+server-held signing key was given only the two roles the app needs, so that if
+it ever leaks again it can admit joiners and attest pools — and nothing else.
 
 | Role | Held by | Why |
 |---|---|---|
-| `TRUST_SIGNER` (PotManager) | `0xbe4A…1D94` | admits a joiner once the server has checked their invite code |
-| `POOL_ATTESTER` (AccountabilityPool) | `0xbe4A…1D94` | signs a day as kept |
-| `RECORDER` (IncomeShare) | `0xbe4A…1D94` | the server itself sends `recordRepayment` |
-| `INSURER_SIGNER` (MicroCover) | `0xbe4A…1D94` | signs a claim settlement |
-| `ARBITRATOR` (SocialPay) | deployer | a human resolves disputes |
-| `SAVINGS_ADMIN` (BehaviourSavings) | deployer | a human approves behaviour verifiers |
-| `INSURER` (MicroCover) | deployer | holds the tINR reserve; a human binds policies |
+| `TRUST_SIGNER` (PotManager) | server signer `0x5aC6…a342` | admits a joiner once the server has checked their invite code |
+| `POOL_ATTESTER` (AccountabilityPool) | server signer `0x5aC6…a342` | signs a day as kept |
+| `RECORDER` (IncomeShare) | offline deployer `0x74e0…93c2` | a lending partner would record repayments |
+| `INSURER_SIGNER` (MicroCover) | offline deployer | a licensed insurer would settle claims |
+| `INSURER` (MicroCover) | offline deployer | holds the test-money reserve; a human binds policies |
+| `ARBITRATOR` (SocialPay) | offline deployer | a human resolves disputes |
+| `SAVINGS_ADMIN` (BehaviourSavings) | offline deployer | a human approves behaviour verifiers |
 
-The deploy script printed a loud warning for the three deployer-held roles,
-which is correct: on a testnet they are placeholders for parties that do not
-exist, and on any other chain the script refuses to run unless each one is
-named explicitly and none of them is the deployer.
+The five deployer-held roles are **placeholders** for parties that do not exist
+on a testnet, and the deploy script said so loudly. No server code can authorise
+a Cover payout or record an Agreement repayment, which is why those actions are
+labelled unavailable in the app instead of faked.
 
-**BehaviourSavings has no approved verifier yet.** `SaveConsistently` goals
-work immediately; `ExternalSignal` goals cannot be created until the savings
-admin calls `registerVerifier` then `setBehaviourVerifier`, pointing at
-`0xbe4A…1D94`.
+**BehaviourSavings has no approved verifier yet.** `SaveConsistently` goals work
+immediately; `ExternalSignal` goals cannot be created until the savings admin
+calls `registerVerifier` then `setBehaviourVerifier`.
 
 ## Honesty
 

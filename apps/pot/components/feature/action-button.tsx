@@ -89,7 +89,7 @@ export function ActionButton({
 export function StickyAction({ children }: { children: React.ReactNode }) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/92 backdrop-blur">
-      <div className="mx-auto w-full max-w-md px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 shadow-md">
+      <div className="mx-auto w-full max-w-xl px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 shadow-md">
         {children}
       </div>
     </div>

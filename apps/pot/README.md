@@ -16,8 +16,11 @@ pnpm dev          # localhost:3000
 
 If a setup card appears instead of the app, an entry in `.env.local` is still
 blank and the card names which one. Copy `.env.example` to `.env.local` and
-fill it in — every value is a public `NEXT_PUBLIC_*` identifier, and
-`../../README.md` steps 2–4 say where each one comes from.
+fill only the values required for the environment you are configuring.
+`NEXT_PUBLIC_*` values are compiled into the browser bundle; server-only values
+must never use that prefix or be shared. Keep `TRUST_SIGNER_ENABLED=false`
+until an approved replacement signer and deployment have been verified. The
+root `../../README.md` and `DEPLOY.md` explain the configuration boundary.
 
 ## The commands
 

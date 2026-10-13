@@ -120,7 +120,7 @@
   --shadow-lg: 0 12px 32px rgba(28, 25, 23, 0.08);
 
   --font-sans: var(--font-sans);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-display), var(--font-sans);
 
   /* One easing for the whole app. Mirrored in lib/motion.ts for the
      JavaScript-driven animations, because two easings read as two products. */
@@ -143,13 +143,17 @@
   --muted-foreground: #57534e; /* stone-600,  7.2:1 — passes AA for body   */
   --text-tertiary: #a8a29e; /* stone-400,  2.5:1 — large/decorative ONLY */
 
-  --primary: #4f46e5; /* indigo-600 */
-  --primary-hover: #4338ca; /* indigo-700 */
-  --primary-subtle: #eef2ff; /* indigo-50  */
-  --primary-strong: #4338ca; /* indigo-700, for text on primary-subtle */
-  --primary-ring: #c7d2fe; /* indigo-200, for borders on subtle fills */
+  /* Brand accent: the same indigo family as before, pulled a little deeper and
+     away from the stock Tailwind indigo so it reads as Pot's own colour.
+     White on --primary is 8.6:1; --primary-strong on --primary-subtle is
+     8.0:1. */
+  --primary: #3b34c4;
+  --primary-hover: #2f29a3;
+  --primary-subtle: #eeedfb;
+  --primary-strong: #2f29a3; /* text on primary-subtle */
+  --primary-ring: #cfccf3; /* borders on subtle fills */
   --primary-foreground: #ffffff;
-  --ring: #4f46e5;
+  --ring: #3b34c4;
 
   --success: #10b981; /* emerald-500 */
   --success-bg: #ecfdf5; /* emerald-50  */
@@ -216,6 +220,25 @@
 
   html {
     @apply font-sans;
+  }
+
+  /* Headings and the big figures share one face; body copy keeps Inter.
+     Selected by the type-scale class names so a heading cannot be styled
+     without it. */
+  h1,
+  h2,
+  h3,
+  .text-display,
+  .text-h1,
+  .text-h2,
+  .text-h3 {
+    font-family: var(--font-heading);
+  }
+
+  /* Money in the display face reads best slightly tighter and with the
+     lining, tabular figures already enforced below. */
+  .text-display {
+    font-feature-settings: "tnum" 1, "lnum" 1;
   }
 
   /* Amounts must never reflow as digits change: ₹1,999 and ₹2,000 have to

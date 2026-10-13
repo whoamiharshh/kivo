@@ -49,10 +49,20 @@ export function useSponsoredCall() {
         args: call.args as never,
       });
 
-      const { hash } = await sendTransaction(
-        { to: call.address, data, chainId: chain.id, value: 0 },
-        { sponsor: true, address }
-      );
+      const request = {
+        to: call.address,
+        data,
+        chainId: chain.id,
+        value: 0,
+      } as const;
+
+      /** Sponsorship is a deployment setting; never retry a financial action without it. */
+      let hash: `0x${string}`;
+      try {
+        ({ hash } = await sendTransaction(request, { sponsor: true, address }));
+      } catch (err) {
+        throw normalizeSponsoredError(err);
+      }
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash,
@@ -68,10 +78,44 @@ export function useSponsoredCall() {
 }
 
 /**
+ * Did this fail because the app is not paying fees, rather than on its merits?
+ *
+ * Matched on the message because Privy reports it as a plain `invalid_data`
+ * error with no distinguishing code, so the wording is the only signal there
+ * is. Deliberately narrow: anything else is a real failure and must not be
+ * retried behind the person's back.
+ */
+function isSponsorshipUnavailable(err: unknown): boolean {
+  const raw =
+    err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return /gas sponsorship is not enabled|sponsorship.*(not enabled|unavailable|disabled)/i.test(
+    raw
+  );
+}
+
+export function normalizeSponsoredError(err: unknown): unknown {
+  if (isSponsorshipUnavailable(err)) {
+    return new Error(
+      "This action is temporarily unavailable. Please try again later."
+    );
+  }
+  return err;
+}
+
+/**
  * Turns a contract revert into something a person can act on. The contract's
  * rules are named errors, so we map the ones a user can actually hit.
  */
 export function readableError(err: unknown): string {
+  // A failure from our own server (joining a pot, for instance) already carries
+  // a sentence written for a person — "This action is temporarily unavailable"
+  // — and flattening it into "Something went wrong" hides the real cause from
+  // both the person and whoever is debugging. Matched by name rather than
+  // imported, so this file does not pull in the auth client.
+  if (err instanceof Error && err.name === "TrustCallError" && err.message) {
+    return err.message;
+  }
+
   const raw =
     err instanceof Error ? `${err.message}` : typeof err === "string" ? err : "";
 

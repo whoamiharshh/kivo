@@ -21,6 +21,15 @@
  *    address, so a per-IP count can also punish the innocent. That is the
  *    other reason it is not allowed to be the real control.
  *
+ * That second point is not hypothetical and it decides the ceiling below. A
+ * room of people testing this app together — a class, a judging table, a
+ * hostel floor — arrives as a single address. At ten a minute they would
+ * throttle each other within seconds while each individual person was behaving
+ * perfectly reasonably, and the app would look broken for everybody at once.
+ * So the ceiling is set for a shared address rather than a single person, and
+ * `TRUST_IP_MAX_PER_MINUTE` raises it further without a code change when a
+ * room turns out to be bigger than expected.
+ *
  * It is worth keeping anyway: it costs nothing and it absorbs a hot loop from
  * one client before that loop reaches the database. Treat it as a courtesy
  * throttle. Production replaces it with Redis — see README, "Rate limiting".
@@ -43,7 +52,17 @@ export class GuardError extends Error {
 // ───────────────────────── per-IP throttle ─────────────────────────
 
 const WINDOW_MS = 60_000;
-const MAX_PER_WINDOW = 10;
+/**
+ * Requests a single address may make in a minute.
+ *
+ * Sized for a shared address, not a single person: see the header. The real
+ * per-person limit is `assertNotTooFrequent`, which counts rows per DID and
+ * is unaffected by this number.
+ */
+export const MAX_PER_WINDOW = (() => {
+  const raw = Number(process.env.TRUST_IP_MAX_PER_MINUTE);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 240;
+})();
 
 /** ip -> timestamps inside the current window. */
 const hits = new Map<string, number[]>();
@@ -121,7 +140,7 @@ export function resetSaltWarning(): void {
   saltWarningShown = false;
 }
 
-/** Throws 429 once an address is over 10 requests in the last minute. */
+/** Throws 429 once one address is over `MAX_PER_WINDOW` in the last minute. */
 export function assertIpUnderLimit(request: Request): void {
   const now = Date.now();
   const ip = clientIp(request);
